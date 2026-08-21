@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
 import { aggregate } from './tools/aggregator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,17 @@ function loadEnv() {
   }
 }
 loadEnv();
+
+// Initialize Supabase Client
+let supabase = null;
+if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+  try {
+    supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    console.log('⚡ Supabase Cloud Database: Connected (' + process.env.SUPABASE_URL + ')');
+  } catch (e) {
+    console.warn('Supabase initialization warning:', e.message);
+  }
+}
 
 const PORT = process.env.PORT ?? 8000;
 const DASHBOARD_DIR = path.join(__dirname, 'dashboard');
@@ -122,6 +134,27 @@ function serveFile(req, res, filePath, contentType) {
 
 async function serveArticles(res) {
   try {
+    if (supabase) {
+      try {
+        const { data: dbArticles, error } = await supabase
+          .from('articles')
+          .select('*')
+          .order('published_at', { ascending: false });
+
+        if (!error && dbArticles && dbArticles.length > 0) {
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache',
+          });
+          res.end(JSON.stringify({ articles: dbArticles, last_fetched: new Date().toISOString(), sources: { supabase: { status: 'ok' } } }));
+          return;
+        }
+      } catch (sbErr) {
+        console.warn('Supabase articles fetch fallback:', sbErr.message);
+      }
+    }
+
     if (fs.existsSync(STATE_FILE)) {
       const data = fs.readFileSync(STATE_FILE, 'utf8');
       res.writeHead(200, {
@@ -132,7 +165,10 @@ async function serveArticles(res) {
       res.end(data);
     } else {
       try {
-        await aggregate();
+        const agg = await aggregate();
+        if (supabase && agg?.articles && agg.articles.length > 0) {
+          supabase.from('articles').upsert(agg.articles, { onConflict: 'url' }).then(() => {}).catch(() => {});
+        }
         if (fs.existsSync(STATE_FILE)) {
           const fresh = fs.readFileSync(STATE_FILE, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -151,8 +187,40 @@ async function serveArticles(res) {
   }
 }
 
-function serveWidgets(res) {
+async function serveWidgets(res) {
   try {
+    if (supabase) {
+      try {
+        const [{ data: projects }, { data: gymStreak }, { data: gymLogs }] = await Promise.all([
+          supabase.from('projects').select('*').order('position', { ascending: true }),
+          supabase.from('gym_streak').select('*').eq('id', 'current').single(),
+          supabase.from('gym_logs').select('*').order('created_at', { ascending: false })
+        ]);
+
+        if (projects || gymStreak) {
+          const payload = {
+            projects: projects || [],
+            gym: {
+              visits: gymStreak?.visits || [],
+              goal_per_month: gymStreak?.goal_per_month || 20,
+              streak_weeks: gymStreak?.streak_weeks || 3,
+              sessions: gymLogs || []
+            },
+            instagram: { enabled: true, handles: [] }
+          };
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache',
+          });
+          res.end(JSON.stringify(payload));
+          return;
+        }
+      } catch (sbErr) {
+        console.warn('Supabase widgets query fallback:', sbErr.message);
+      }
+    }
+
     if (fs.existsSync(WIDGETS_FILE)) {
       const data = fs.readFileSync(WIDGETS_FILE, 'utf8');
       res.writeHead(200, {
@@ -171,20 +239,58 @@ function serveWidgets(res) {
   }
 }
 
-function updateWidgets(req, res) {
+async function updateWidgets(req, res) {
   let body = '';
   req.on('data', chunk => { body += chunk; });
-  req.on('end', () => {
+  req.on('end', async () => {
     try {
-      const parsed = JSON.parse(body);
+      const parsed = JSON.parse(body || '{}');
+
+      // Sync with Supabase
+      if (supabase) {
+        try {
+          if (Array.isArray(parsed.projects)) {
+            const formatted = parsed.projects.map((p, idx) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category || 'AI Pipeline',
+              status: p.status || 'in_progress',
+              progress: p.progress ?? 50,
+              color: p.color || '#F5C518',
+              tasks: p.tasks || '1/4 tasks',
+              due: p.due || 'End of Month',
+              position: idx,
+              updated_at: new Date().toISOString()
+            }));
+            await supabase.from('projects').upsert(formatted);
+          }
+
+          if (parsed.gym) {
+            await supabase.from('gym_streak').upsert({
+              id: 'current',
+              goal_per_month: parsed.gym.goal_per_month || 20,
+              streak_weeks: parsed.gym.streak_weeks || 3,
+              visits: parsed.gym.visits || [],
+              updated_at: new Date().toISOString()
+            });
+          }
+        } catch (sbErr) {
+          console.warn('Supabase widgets update warning:', sbErr.message);
+        }
+      }
+
       let current = {};
       if (fs.existsSync(WIDGETS_FILE)) {
         current = JSON.parse(fs.readFileSync(WIDGETS_FILE, 'utf8'));
       }
       const updated = { ...current, ...parsed };
-      fs.writeFileSync(WIDGETS_FILE, JSON.stringify(updated, null, 2), 'utf8');
+      try {
+        if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+        fs.writeFileSync(WIDGETS_FILE, JSON.stringify(updated, null, 2), 'utf8');
+      } catch (e) {}
+
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ success: true, data: updated }));
+      res.end(JSON.stringify({ success: true, data: updated, supabase: Boolean(supabase) }));
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ error: e.message }));
@@ -196,9 +302,9 @@ function updateWidgets(req, res) {
 function handleLocationEvent(req, res) {
   let body = '';
   req.on('data', chunk => { body += chunk; });
-  req.on('end', () => {
+  req.on('end', async () => {
     try {
-      const payload = JSON.parse(body);
+      const payload = JSON.parse(body || '{}');
       const eventType = payload.event || 'enter';
       const eventTime = payload.timestamp ? new Date(payload.timestamp) : new Date();
       const dateStr = eventTime.toISOString().slice(0, 10);
@@ -240,7 +346,7 @@ function handleLocationEvent(req, res) {
           activeSession.status = 'completed';
           activeSession.duration = 'Completed';
         } else {
-          current.gym.sessions.unshift({
+          activeSession = {
             id: `s_${Date.now()}`,
             date: dateStr,
             enter_time: 'Auto-detected',
@@ -250,14 +356,41 @@ function handleLocationEvent(req, res) {
             detected_by: 'Bestrong Geofence (Automatic)',
             calories: 480,
             heart_rate_avg: '135 bpm'
-          });
+          };
+          current.gym.sessions.unshift(activeSession);
         }
       }
 
-      fs.writeFileSync(WIDGETS_FILE, JSON.stringify(current, null, 2), 'utf8');
+      if (supabase && activeSession) {
+        try {
+          await supabase.from('gym_logs').upsert({
+            id: activeSession.id,
+            date: dateStr,
+            enter_time: activeSession.enter_time,
+            exit_time: activeSession.exit_time,
+            duration: activeSession.duration,
+            status: activeSession.status,
+            detected_by: activeSession.detected_by,
+            calories: activeSession.calories,
+            heart_rate_avg: activeSession.heart_rate_avg
+          });
+          await supabase.from('gym_streak').upsert({
+            id: 'current',
+            visits: current.gym.visits,
+            updated_at: new Date().toISOString()
+          });
+        } catch (sbErr) {
+          console.warn('Supabase gym log sync warning:', sbErr.message);
+        }
+      }
+
+      try {
+        if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+        fs.writeFileSync(WIDGETS_FILE, JSON.stringify(current, null, 2), 'utf8');
+      } catch (e) {}
 
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ success: true, message: `Gym ${eventType} logged automatically at ${timeFormatted}`, data: current.gym }));
+      res.end(JSON.stringify({ success: true, message: `Gym ${eventType} logged automatically at ${timeFormatted}`, data: current.gym, supabase: Boolean(supabase) }));
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ error: e.message }));
@@ -909,6 +1042,69 @@ async function handleBotWebhookDispatch(req, res) {
   });
 }
 
+async function handleBotSessionsEndpoint(req, res) {
+  if (req.method === 'GET') {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('chat_sessions').select('*').order('updated_at', { ascending: false });
+        if (!error && data) {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ success: true, sessions: data, supabase: true }));
+          return;
+        }
+      } catch (e) {
+        console.warn('Supabase chat sessions query error:', e.message);
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ success: true, sessions: [], supabase: false }));
+    return;
+  }
+
+  if (req.method === 'POST') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        if (supabase && payload.id) {
+          await supabase.from('chat_sessions').upsert({
+            id: payload.id,
+            title: payload.title || 'Conversation',
+            messages: payload.messages || [],
+            updated_at: new Date().toISOString()
+          });
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, supabase: Boolean(supabase) }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'DELETE') {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        if (supabase && payload.id) {
+          await supabase.from('chat_sessions').delete().eq('id', payload.id);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, supabase: Boolean(supabase) }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+}
+
 // ============================================================
 // MAIN HTTP SERVER & ROUTER
 // ============================================================
@@ -921,7 +1117,7 @@ export async function handleRequest(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Range',
     });
     res.end();
@@ -950,6 +1146,10 @@ export async function handleRequest(req, res) {
 
   if (pathname === '/api/bot/dispatch-webhook' && req.method === 'POST') {
     return handleBotWebhookDispatch(req, res);
+  }
+
+  if (pathname === '/api/bot/sessions') {
+    return handleBotSessionsEndpoint(req, res);
   }
 
   if (pathname === '/api/refresh' && req.method === 'POST') {
