@@ -911,37 +911,63 @@ function renderGeofenceModal() {
   const triggersCountEl = document.getElementById('geo-triggers-count');
   if (!triggersListEl) return;
 
-  // 1. Gather triggers from state.widgets.gym.triggers
-  let triggers = Array.isArray(gym.triggers) ? [...gym.triggers] : [];
+  // 1. Gather all explicit triggers
+  let allTriggers = Array.isArray(gym.triggers) ? [...gym.triggers] : [];
 
-  // 2. Fallback: Synthesize from session enter/exit times if triggers array is empty
-  if (triggers.length === 0 && Array.isArray(gym.sessions) && gym.sessions.length > 0) {
-    gym.sessions.forEach(sess => {
-      if (sess.exit_time) {
-        triggers.push({
-          id: `${sess.id}_exit`,
-          event: 'exit',
-          date: sess.date,
-          time: sess.exit_time,
-          display_time: `${sess.date} · ${sess.exit_time}`,
-          detected_by: sess.detected_by || 'MacroDroid Geofence'
-        });
+  // 2. Also extract exit and enter events from session logs
+  if (Array.isArray(gym.sessions)) {
+    gym.sessions.forEach((sess, sIdx) => {
+      // Exit trigger if session has exit time
+      if (sess.exit_time && sess.exit_time !== 'null' && sess.exit_time !== 'In progress...' && sess.exit_time !== 'In Progress') {
+        const exitTimeStr = sess.exit_time;
+        const exists = allTriggers.some(t => t.event === 'exit' && (t.time === exitTimeStr || t.display_time?.includes(exitTimeStr)));
+        if (!exists) {
+          allTriggers.push({
+            id: `sess_exit_${sess.id || sIdx}`,
+            event: 'exit',
+            date: sess.date,
+            time: exitTimeStr,
+            display_time: `${sess.date} · ${exitTimeStr}`,
+            detected_by: sess.detected_by || 'Bestrong Geofence (Automatic)'
+          });
+        }
       }
-      if (sess.enter_time) {
-        triggers.push({
-          id: `${sess.id}_enter`,
-          event: 'enter',
-          date: sess.date,
-          time: sess.enter_time,
-          display_time: `${sess.date} · ${sess.enter_time}`,
-          detected_by: sess.detected_by || 'MacroDroid Geofence'
-        });
+      // Enter trigger if session has enter time
+      if (sess.enter_time && sess.enter_time !== 'Auto-detected') {
+        const enterTimeStr = sess.enter_time;
+        const exists = allTriggers.some(t => t.event === 'enter' && (t.time === enterTimeStr || t.display_time?.includes(enterTimeStr)));
+        if (!exists) {
+          allTriggers.push({
+            id: `sess_enter_${sess.id || sIdx}`,
+            event: 'enter',
+            date: sess.date,
+            time: enterTimeStr,
+            display_time: `${sess.date} · ${enterTimeStr}`,
+            detected_by: sess.detected_by || 'Bestrong Geofence (Automatic)'
+          });
+        }
       }
     });
   }
 
+  // Helper to parse timestamp or date + time for sorting
+  const parseTriggerTime = (t) => {
+    if (t.timestamp) {
+      const ts = new Date(t.timestamp).getTime();
+      if (!isNaN(ts)) return ts;
+    }
+    if (t.date && t.time) {
+      const d = new Date(`${t.date} ${t.time}`);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+    return 0;
+  };
+
+  // Sort newest first
+  allTriggers.sort((a, b) => parseTriggerTime(b) - parseTriggerTime(a));
+
   // Take the most recent 5 triggers
-  const last5 = triggers.slice(0, 5);
+  const last5 = allTriggers.slice(0, 5);
 
   if (triggersCountEl) {
     triggersCountEl.textContent = last5.length > 0 ? `${last5.length} Recent Logged` : 'Live Log';
@@ -962,7 +988,7 @@ function renderGeofenceModal() {
     const badgeCls = isEnter ? 'enter' : 'exit';
     const badgeText = isEnter ? '🟢 ENTER' : '🔴 EXIT';
     const timeDisplay = trig.display_time || (trig.time ? `${trig.date || 'Today'} · ${trig.time}` : (trig.timestamp ? new Date(trig.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Logged'));
-    const sourceDisplay = trig.detected_by || 'MacroDroid Geofence';
+    const sourceDisplay = trig.detected_by || 'Bestrong Geofence (Automatic)';
 
     return `
       <div class="geo-trigger-row">
@@ -970,7 +996,7 @@ function renderGeofenceModal() {
           <span class="geo-trigger-badge ${badgeCls}">${badgeText}</span>
           <span class="geo-trigger-time">${timeDisplay}</span>
         </div>
-        <span class="geo-trigger-source">${sourceDisplay}</span>
+        <span class="geo-trigger-source" title="${sourceDisplay}">${sourceDisplay}</span>
       </div>
     `;
   }).join('');
