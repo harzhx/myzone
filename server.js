@@ -644,8 +644,8 @@ async function callGeminiChat(userMsg, history, context) {
   const apiKey = (process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured in .env');
 
-  const systemInstruction = `You are Bhondu, an intelligent, friendly, ultra-capable personal dashboard companion AI for the user.
-You talk like a sharp, supportive personal chief of staff. Never output robotic gibberish. Write with clean, elegant markdown formatting (bolding, lists, highlights).
+  const systemInstruction = `You are Bhondu, a personal dashboard companion AI.
+STYLE RULE: Keep your replies short, concise, punchy, and strictly to the point (1 to 3 sentences maximum). Never write long essays, wordy fluff, or bloated lists unless explicitly requested.
 
 Current Real-Time Dashboard State:
 - Active Projects: ${JSON.stringify(context.projects || [])}
@@ -655,7 +655,7 @@ Current Real-Time Dashboard State:
 
 You MUST respond strictly in valid JSON format matching this schema:
 {
-  "reply": "Conversational, insightful, direct markdown response to the user",
+  "reply": "Short, concise, direct response (1-3 sentences max)",
   "action": null | {
     "type": "add_project" | "move_project" | "delete_project" | "log_gym" | "tweet",
     "data": {
@@ -670,15 +670,15 @@ You MUST respond strictly in valid JSON format matching this schema:
 
 IMPORTANT RULES FOR ACTIONS ("Work when assigned"):
 1. ONLY return an "action" object when the user explicitly assigns or requests a specific task or change (e.g., adding a project, changing/moving a project status, deleting a project, logging a gym workout, posting a tweet).
-2. When performing an action, describe what you did clearly in "reply" and set "action" to the appropriate payload.
-3. For general chat, questions, brainstorming, project advice, news summaries, or casual remarks, "action" MUST BE null.
+2. When performing an action, describe what you did cleanly in 1-2 concise sentences in "reply" and set "action" to the appropriate payload.
+3. For general chat, questions, or news, answer directly and concisely with "action": null.
 4. Ensure the JSON is completely valid without extra leading or trailing text.`;
 
   const contents = [];
 
   // Append recent conversation history for rich continuity
   if (Array.isArray(history) && history.length > 0) {
-    history.slice(-6).forEach(h => {
+    history.slice(-4).forEach(h => {
       if (h.sender === 'user' && h.text) {
         contents.push({ role: 'user', parts: [{ text: h.text }] });
       } else if (h.sender === 'bot' && h.text) {
@@ -696,16 +696,17 @@ IMPORTANT RULES FOR ACTIONS ("Work when assigned"):
   const postBody = JSON.stringify({
     contents,
     generationConfig: {
-      temperature: 0.7,
+      temperature: 0.2,
+      maxOutputTokens: 250,
       responseMimeType: 'application/json'
     }
   });
 
   const candidateModels = [
     process.env.GEMINI_MODEL,
-    'gemini-3.6-flash',
-    'gemini-3.7-flash',
-    'gemini-flash-latest'
+    'gemini-3.5-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3.6-flash'
   ].filter(Boolean);
 
   let lastError = null;
@@ -713,7 +714,7 @@ IMPORTANT RULES FOR ACTIONS ("Work when assigned"):
   for (const model of candidateModels) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 35000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
       const res = await fetch(url, {
