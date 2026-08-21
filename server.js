@@ -221,8 +221,17 @@ async function serveWidgets(res) {
       }
     }
 
+    const DEFAULT_WIDGETS_FILE = path.join(DASHBOARD_DIR, 'widgets.json');
     if (fs.existsSync(WIDGETS_FILE)) {
       const data = fs.readFileSync(WIDGETS_FILE, 'utf8');
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache',
+      });
+      res.end(data);
+    } else if (fs.existsSync(DEFAULT_WIDGETS_FILE)) {
+      const data = fs.readFileSync(DEFAULT_WIDGETS_FILE, 'utf8');
       res.writeHead(200, {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
