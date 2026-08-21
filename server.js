@@ -69,6 +69,34 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
 };
 
+async function parseRequestBody(req) {
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'object') {
+      return req.body;
+    }
+    if (typeof req.body === 'string' && req.body.trim()) {
+      try {
+        return JSON.parse(req.body);
+      } catch (e) {
+        return {};
+      }
+    }
+  }
+
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (e) {
+        resolve({});
+      }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
 function serveFile(req, res, filePath, contentType) {
   try {
     // Prevent Directory Traversal (CWE-22)
@@ -249,162 +277,168 @@ async function serveWidgets(res) {
 }
 
 async function updateWidgets(req, res) {
-  let body = '';
-  req.on('data', chunk => { body += chunk; });
-  req.on('end', async () => {
-    try {
-      const parsed = JSON.parse(body || '{}');
+  try {
+    const parsed = await parseRequestBody(req);
 
-      // Sync with Supabase
-      if (supabase) {
-        try {
-          if (Array.isArray(parsed.projects)) {
-            const formatted = parsed.projects.map((p, idx) => ({
-              id: p.id,
-              name: p.name,
-              category: p.category || 'AI Pipeline',
-              status: p.status || 'in_progress',
-              progress: p.progress ?? 50,
-              color: p.color || '#F5C518',
-              tasks: p.tasks || '1/4 tasks',
-              due: p.due || 'End of Month',
-              position: idx,
-              updated_at: new Date().toISOString()
-            }));
-            await supabase.from('projects').upsert(formatted);
-          }
-
-          if (parsed.gym) {
-            await supabase.from('gym_streak').upsert({
-              id: 'current',
-              goal_per_month: parsed.gym.goal_per_month || 20,
-              streak_weeks: parsed.gym.streak_weeks || 3,
-              visits: parsed.gym.visits || [],
-              updated_at: new Date().toISOString()
-            });
-          }
-        } catch (sbErr) {
-          console.warn('Supabase widgets update warning:', sbErr.message);
-        }
-      }
-
-      let current = {};
-      if (fs.existsSync(WIDGETS_FILE)) {
-        current = JSON.parse(fs.readFileSync(WIDGETS_FILE, 'utf8'));
-      }
-      const updated = { ...current, ...parsed };
+    // Sync with Supabase
+    if (supabase) {
       try {
-        if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
-        fs.writeFileSync(WIDGETS_FILE, JSON.stringify(updated, null, 2), 'utf8');
-      } catch (e) {}
+        if (Array.isArray(parsed.projects)) {
+          const formatted = parsed.projects.map((p, idx) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category || 'AI Pipeline',
+            status: p.status || 'in_progress',
+            progress: p.progress ?? 50,
+            color: p.color || '#F5C518',
+            tasks: p.tasks || '1/4 tasks',
+            due: p.due || 'End of Month',
+            position: idx,
+            updated_at: new Date().toISOString()
+          }));
+          await supabase.from('projects').upsert(formatted);
 
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ success: true, data: updated, supabase: Boolean(supabase) }));
-    } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: e.message }));
+          // If items were deleted, clean up Supabase
+          const currentIds = parsed.projects.map(p => p.id);
+          const { data: existing } = await supabase.from('projects').select('id');
+          if (existing && existing.length > 0) {
+            const toDelete = existing.filter(e => !currentIds.includes(e.id)).map(e => e.id);
+            if (toDelete.length > 0) {
+              await supabase.from('projects').delete().in('id', toDelete);
+            }
+          }
+        }
+
+        if (parsed.gym) {
+          await supabase.from('gym_streak').upsert({
+            id: 'current',
+            goal_per_month: parsed.gym.goal_per_month || 20,
+            streak_weeks: parsed.gym.streak_weeks || 3,
+            visits: parsed.gym.visits || [],
+            updated_at: new Date().toISOString()
+          });
+        }
+      } catch (sbErr) {
+        console.warn('Supabase widgets update warning:', sbErr.message);
+      }
     }
-  });
+
+    let current = {};
+    if (fs.existsSync(WIDGETS_FILE)) {
+      current = JSON.parse(fs.readFileSync(WIDGETS_FILE, 'utf8'));
+    } else if (fs.existsSync(path.join(DASHBOARD_DIR, 'widgets.json'))) {
+      current = JSON.parse(fs.readFileSync(path.join(DASHBOARD_DIR, 'widgets.json'), 'utf8'));
+    }
+    const updated = { ...current, ...parsed };
+    try {
+      if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+      fs.writeFileSync(WIDGETS_FILE, JSON.stringify(updated, null, 2), 'utf8');
+    } catch (e) {}
+
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ success: true, data: updated, supabase: Boolean(supabase) }));
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
 }
 
 // Automatic Phone Geolocation Event Handler
-function handleLocationEvent(req, res) {
-  let body = '';
-  req.on('data', chunk => { body += chunk; });
-  req.on('end', async () => {
-    try {
-      const payload = JSON.parse(body || '{}');
-      const eventType = payload.event || 'enter';
-      const eventTime = payload.timestamp ? new Date(payload.timestamp) : new Date();
-      const dateStr = eventTime.toISOString().slice(0, 10);
-      const timeFormatted = eventTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+async function handleLocationEvent(req, res) {
+  try {
+    const payload = await parseRequestBody(req);
+    const eventType = payload.event || 'enter';
+    const eventTime = payload.timestamp ? new Date(payload.timestamp) : new Date();
+    const dateStr = eventTime.toISOString().slice(0, 10);
+    const timeFormatted = eventTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-      let current = { gym: { visits: [], sessions: [] } };
-      if (fs.existsSync(WIDGETS_FILE)) {
-        current = JSON.parse(fs.readFileSync(WIDGETS_FILE, 'utf8'));
-      }
-
-      current.gym = current.gym || {};
-      current.gym.visits = current.gym.visits || [];
-      current.gym.sessions = current.gym.sessions || [];
-
-      if (!current.gym.visits.includes(dateStr)) {
-        current.gym.visits.push(dateStr);
-      }
-
-      let activeSession = current.gym.sessions.find(s => s.date === dateStr && s.status === 'in_progress');
-
-      if (eventType === 'enter') {
-        if (!activeSession) {
-          activeSession = {
-            id: `s_${Date.now()}`,
-            date: dateStr,
-            enter_time: timeFormatted,
-            exit_time: null,
-            duration: 'In progress...',
-            status: 'in_progress',
-            detected_by: 'Bestrong Geofence (Automatic)',
-            calories: 0,
-            heart_rate_avg: '--'
-          };
-          current.gym.sessions.unshift(activeSession);
-        }
-      } else if (eventType === 'exit') {
-        if (activeSession) {
-          activeSession.exit_time = timeFormatted;
-          activeSession.status = 'completed';
-          activeSession.duration = 'Completed';
-        } else {
-          activeSession = {
-            id: `s_${Date.now()}`,
-            date: dateStr,
-            enter_time: 'Auto-detected',
-            exit_time: timeFormatted,
-            duration: 'Logged via Geofence',
-            status: 'completed',
-            detected_by: 'Bestrong Geofence (Automatic)',
-            calories: 480,
-            heart_rate_avg: '135 bpm'
-          };
-          current.gym.sessions.unshift(activeSession);
-        }
-      }
-
-      if (supabase && activeSession) {
-        try {
-          await supabase.from('gym_logs').upsert({
-            id: activeSession.id,
-            date: dateStr,
-            enter_time: activeSession.enter_time,
-            exit_time: activeSession.exit_time,
-            duration: activeSession.duration,
-            status: activeSession.status,
-            detected_by: activeSession.detected_by,
-            calories: activeSession.calories,
-            heart_rate_avg: activeSession.heart_rate_avg
-          });
-          await supabase.from('gym_streak').upsert({
-            id: 'current',
-            visits: current.gym.visits,
-            updated_at: new Date().toISOString()
-          });
-        } catch (sbErr) {
-          console.warn('Supabase gym log sync warning:', sbErr.message);
-        }
-      }
-
-      try {
-        if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
-        fs.writeFileSync(WIDGETS_FILE, JSON.stringify(current, null, 2), 'utf8');
-      } catch (e) {}
-
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ success: true, message: `Gym ${eventType} logged automatically at ${timeFormatted}`, data: current.gym, supabase: Boolean(supabase) }));
-    } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: e.message }));
+    let current = { gym: { visits: [], sessions: [] } };
+    if (fs.existsSync(WIDGETS_FILE)) {
+      current = JSON.parse(fs.readFileSync(WIDGETS_FILE, 'utf8'));
+    } else if (fs.existsSync(path.join(DASHBOARD_DIR, 'widgets.json'))) {
+      current = JSON.parse(fs.readFileSync(path.join(DASHBOARD_DIR, 'widgets.json'), 'utf8'));
     }
-  });
+
+    current.gym = current.gym || {};
+    current.gym.visits = current.gym.visits || [];
+    current.gym.sessions = current.gym.sessions || [];
+
+    if (!current.gym.visits.includes(dateStr)) {
+      current.gym.visits.push(dateStr);
+    }
+
+    let activeSession = current.gym.sessions.find(s => s.date === dateStr && s.status === 'in_progress');
+
+    if (eventType === 'enter') {
+      if (!activeSession) {
+        activeSession = {
+          id: `s_${Date.now()}`,
+          date: dateStr,
+          enter_time: timeFormatted,
+          exit_time: null,
+          duration: 'In progress...',
+          status: 'in_progress',
+          detected_by: 'Bestrong Geofence (Automatic)',
+          calories: 0,
+          heart_rate_avg: '--'
+        };
+        current.gym.sessions.unshift(activeSession);
+      }
+    } else if (eventType === 'exit') {
+      if (activeSession) {
+        activeSession.exit_time = timeFormatted;
+        activeSession.status = 'completed';
+        activeSession.duration = 'Completed';
+      } else {
+        activeSession = {
+          id: `s_${Date.now()}`,
+          date: dateStr,
+          enter_time: 'Auto-detected',
+          exit_time: timeFormatted,
+          duration: 'Logged via Geofence',
+          status: 'completed',
+          detected_by: 'Bestrong Geofence (Automatic)',
+          calories: 480,
+          heart_rate_avg: '135 bpm'
+        };
+        current.gym.sessions.unshift(activeSession);
+      }
+    }
+
+    if (supabase && activeSession) {
+      try {
+        await supabase.from('gym_logs').upsert({
+          id: activeSession.id,
+          date: dateStr,
+          enter_time: activeSession.enter_time,
+          exit_time: activeSession.exit_time,
+          duration: activeSession.duration,
+          status: activeSession.status,
+          detected_by: activeSession.detected_by,
+          calories: activeSession.calories,
+          heart_rate_avg: activeSession.heart_rate_avg
+        });
+        await supabase.from('gym_streak').upsert({
+          id: 'current',
+          visits: current.gym.visits,
+          updated_at: new Date().toISOString()
+        });
+      } catch (sbErr) {
+        console.warn('Supabase gym log sync warning:', sbErr.message);
+      }
+    }
+
+    try {
+      if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+      fs.writeFileSync(WIDGETS_FILE, JSON.stringify(current, null, 2), 'utf8');
+    } catch (e) {}
+
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ success: true, message: `Gym ${eventType} logged automatically at ${timeFormatted}`, data: current.gym, supabase: Boolean(supabase) }));
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
 }
 
 // ============================================================
@@ -412,74 +446,70 @@ function handleLocationEvent(req, res) {
 // ============================================================
 
 async function handleBotChatEndpoint(req, res) {
-  let body = '';
-  req.on('data', chunk => { body += chunk; });
-  req.on('end', async () => {
-    try {
-      const payload = JSON.parse(body || '{}');
-      const message = (payload.message || '').trim();
-      const history = payload.history || [];
-      const context = payload.context || {};
+  try {
+    const payload = await parseRequestBody(req);
+    const message = (payload.message || '').trim();
+    const history = payload.history || [];
+    const context = payload.context || {};
 
-      if (!message) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Message is required.' }));
-        return;
-      }
-
-      let response = null;
-
-      // 1. Try OpenAI LLM if configured
-      if (process.env.OPENAI_API_KEY) {
-        try {
-          response = await callOpenAiChat(message, history, context);
-        } catch (llmErr) {
-          console.warn('[OpenAI Chat Fallback Notice]:', llmErr.message);
-        }
-      }
-
-      // 2. Try Gemini LLM if configured
-      if (!response && process.env.GEMINI_API_KEY) {
-        try {
-          response = await callGeminiChat(message, history, context);
-        } catch (geminiErr) {
-          console.warn('[Gemini Chat Fallback Notice]:', geminiErr.message);
-        }
-      }
-
-      // 3. Built-in Natural Language Intent & Conversational Engine (Zero-dependency fallback)
-      if (!response) {
-        response = await generateSmartChatResponse(message, history, context);
-      }
-
-      // If response includes an automated social media / tweet action, dispatch to Make.com Webhook
-      if (response && response.action && response.action.type === 'tweet' && response.action.data?.text) {
-        const webhookUrl = process.env.MAKE_WEBHOOK_URL || process.env.MAKE_BUFFER_WEBHOOK_URL;
-        if (webhookUrl && !webhookUrl.includes('your-custom-webhook-id')) {
-          try {
-            await dispatchToMakeWebhook(response.action.data.text, webhookUrl);
-            response.action.dispatched = true;
-          } catch (whErr) {
-            console.warn('[Make.com Webhook Dispatch Error]:', whErr.message);
-          }
-        }
-      }
-
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache'
-      });
-      res.end(JSON.stringify(response));
-    } catch (e) {
-      console.error('[Bot Chat Error]:', e);
-      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({
-        reply: "I encountered a minor issue processing that. How can I assist you with your projects, gym habits, or tech summaries?",
-        error: e.message
-      }));
+    if (!message) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Message is required.' }));
+      return;
     }
-  });
+
+    let response = null;
+
+    // 1. Try OpenAI LLM if configured
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        response = await callOpenAiChat(message, history, context);
+      } catch (llmErr) {
+        console.warn('[OpenAI Chat Fallback Notice]:', llmErr.message);
+      }
+    }
+
+    // 2. Try Gemini LLM if configured
+    if (!response && process.env.GEMINI_API_KEY) {
+      try {
+        response = await callGeminiChat(message, history, context);
+      } catch (geminiErr) {
+        console.warn('[Gemini Chat Fallback Notice]:', geminiErr.message);
+      }
+    }
+
+    // 3. Built-in Natural Language Intent & Conversational Engine (Zero-dependency fallback)
+    if (!response) {
+      response = await generateSmartChatResponse(message, history, context);
+    }
+
+    // If response includes an automated social media / tweet action, dispatch to Make.com Webhook
+    if (response && response.action && response.action.type === 'tweet' && response.action.data?.text) {
+      const webhookUrl = process.env.MAKE_WEBHOOK_URL || process.env.MAKE_BUFFER_WEBHOOK_URL;
+      if (webhookUrl && !webhookUrl.includes('your-custom-webhook-id')) {
+        try {
+          await dispatchToMakeWebhook(response.action.data.text, webhookUrl);
+          response.action.dispatched = true;
+        } catch (whErr) {
+          console.warn('[Make.com Webhook Dispatch Error]:', whErr.message);
+        }
+      }
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache'
+    });
+    res.end(JSON.stringify(response));
+  } catch (e) {
+    console.error('[Bot Chat Error]:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({
+      reply: "I encountered a minor issue processing that. How can I assist you with your projects, gym habits, or tech summaries?",
+      error: e.message
+    }));
+  }
 }
 
 // LLM: OpenAI Chat Completions
@@ -934,121 +964,117 @@ async function dispatchToMakeWebhook(text, webhookUrl) {
 // ============================================================
 
 async function handleBotWebhookDispatch(req, res) {
-  let body = '';
-  req.on('data', chunk => { body += chunk; });
-  req.on('end', async () => {
-    try {
-      const payload = JSON.parse(body || '{}');
-      const action = payload.action || 'tweet';
-      const text = payload.text || payload.message || '';
-      const customWebhook = payload.webhook_url;
+  try {
+    const payload = await parseRequestBody(req);
+    const action = payload.action || 'tweet';
+    const text = payload.text || payload.message || '';
+    const customWebhook = payload.webhook_url;
 
-      if (!text && !payload.data) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Text or data payload is required' }));
-        return;
+    if (!text && !payload.data) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Text or data payload is required' }));
+      return;
+    }
+
+    const targetWebhook = customWebhook || process.env.MAKE_BUFFER_WEBHOOK_URL;
+    const isPlaceholder = !targetWebhook || targetWebhook.includes('your-custom-webhook-id') || targetWebhook.includes('placeholder');
+
+    const dispatchPayload = {
+      action,
+      text,
+      timestamp: new Date().toISOString(),
+      source: 'My Zone AI Assistant',
+      metadata: {
+        app: 'My Zone Dashboard',
+        ...payload.metadata
       }
+    };
 
-      const targetWebhook = customWebhook || process.env.MAKE_BUFFER_WEBHOOK_URL;
-      const isPlaceholder = !targetWebhook || targetWebhook.includes('your-custom-webhook-id') || targetWebhook.includes('placeholder');
+    if (isPlaceholder) {
+      // Return simulated success when webhook is not yet configured with user ID
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({
+        success: true,
+        mode: 'simulated',
+        message: 'Payload prepared and verified. (Configured with simulated local webhook runner until custom Make.com/Buffer URL is set in .env or Webhook Settings)',
+        dispatched_payload: dispatchPayload,
+        webhook_url: targetWebhook || 'Not configured'
+      }));
+      return;
+    }
 
-      const dispatchPayload = {
-        action,
-        text,
-        timestamp: new Date().toISOString(),
-        source: 'My Zone AI Assistant',
-        metadata: {
-          app: 'My Zone Dashboard',
-          ...payload.metadata
-        }
-      };
+    // Validate Webhook URL & Protect against SSRF (CWE-918)
+    let webhookUrl;
+    try {
+      webhookUrl = new URL(targetWebhook);
+    } catch (urlErr) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Invalid webhook URL format.' }));
+      return;
+    }
 
-      if (isPlaceholder) {
-        // Return simulated success when webhook is not yet configured with user ID
+    if (!['http:', 'https:'].includes(webhookUrl.protocol)) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Webhook URL must use HTTP or HTTPS protocol.' }));
+      return;
+    }
+
+    const hostname = webhookUrl.hostname.toLowerCase();
+    const isInternalHost = (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '169.254.169.254' ||
+      hostname.endsWith('.internal') ||
+      hostname.endsWith('.local')
+    );
+
+    if (isInternalHost && !process.env.ALLOW_INTERNAL_WEBHOOKS) {
+      res.writeHead(403, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Internal/loopback webhook targets are blocked for security.' }));
+      return;
+    }
+
+    const postData = JSON.stringify(dispatchPayload);
+    const client = webhookUrl.protocol === 'http:' ? http : https;
+    const whReq = client.request(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, (whRes) => {
+      let respData = '';
+      whRes.on('data', c => { respData += c; });
+      whRes.on('end', () => {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({
-          success: true,
-          mode: 'simulated',
-          message: 'Payload prepared and verified. (Configured with simulated local webhook runner until custom Make.com/Buffer URL is set in .env or Webhook Settings)',
-          dispatched_payload: dispatchPayload,
-          webhook_url: targetWebhook || 'Not configured'
-        }));
-        return;
-      }
-
-      // Validate Webhook URL & Protect against SSRF (CWE-918)
-      let webhookUrl;
-      try {
-        webhookUrl = new URL(targetWebhook);
-      } catch (urlErr) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Invalid webhook URL format.' }));
-        return;
-      }
-
-      if (!['http:', 'https:'].includes(webhookUrl.protocol)) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Webhook URL must use HTTP or HTTPS protocol.' }));
-        return;
-      }
-
-      const hostname = webhookUrl.hostname.toLowerCase();
-      const isInternalHost = (
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname === '::1' ||
-        hostname === '0.0.0.0' ||
-        hostname === '169.254.169.254' ||
-        hostname.endsWith('.internal') ||
-        hostname.endsWith('.local')
-      );
-
-      if (isInternalHost && !process.env.ALLOW_INTERNAL_WEBHOOKS) {
-        res.writeHead(403, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Internal/loopback webhook targets are blocked for security.' }));
-        return;
-      }
-
-      const postData = JSON.stringify(dispatchPayload);
-      const client = webhookUrl.protocol === 'http:' ? http : https;
-      const whReq = client.request(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData)
-        }
-      }, (whRes) => {
-        let respData = '';
-        whRes.on('data', c => { respData += c; });
-        whRes.on('end', () => {
-          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-          res.end(JSON.stringify({
-            success: whRes.statusCode >= 200 && whRes.statusCode < 300,
-            status_code: whRes.statusCode,
-            response: respData.substring(0, 500),
-            dispatched_payload: dispatchPayload
-          }));
-        });
-      });
-
-      whReq.on('error', (err) => {
-        console.error('[Webhook Dispatch Error]:', err.message);
-        res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({
-          success: false,
-          error: `Failed to reach webhook: ${err.message}`,
+          success: whRes.statusCode >= 200 && whRes.statusCode < 300,
+          status_code: whRes.statusCode,
+          response: respData.substring(0, 500),
           dispatched_payload: dispatchPayload
         }));
       });
+    });
 
-      whReq.write(postData);
-      whReq.end();
+    whReq.on('error', (err) => {
+      console.error('[Webhook Dispatch Error]:', err.message);
+      res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({
+        success: false,
+        error: `Failed to reach webhook: ${err.message}`,
+        dispatched_payload: dispatchPayload
+      }));
+    });
 
-    } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: e.message }));
-    }
-  });
+    whReq.write(postData);
+    whReq.end();
+
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
 }
 
 async function handleBotSessionsEndpoint(req, res) {
@@ -1071,45 +1097,37 @@ async function handleBotSessionsEndpoint(req, res) {
   }
 
   if (req.method === 'POST') {
-    let body = '';
-    req.on('data', c => { body += c; });
-    req.on('end', async () => {
-      try {
-        const payload = JSON.parse(body || '{}');
-        if (supabase && payload.id) {
-          await supabase.from('chat_sessions').upsert({
-            id: payload.id,
-            title: payload.title || 'Conversation',
-            messages: payload.messages || [],
-            updated_at: new Date().toISOString()
-          });
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ success: true, supabase: Boolean(supabase) }));
-      } catch (e) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: e.message }));
+    try {
+      const payload = await parseRequestBody(req);
+      if (supabase && payload.id) {
+        await supabase.from('chat_sessions').upsert({
+          id: payload.id,
+          title: payload.title || 'Conversation',
+          messages: payload.messages || [],
+          updated_at: new Date().toISOString()
+        });
       }
-    });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ success: true, supabase: Boolean(supabase) }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
     return;
   }
 
   if (req.method === 'DELETE') {
-    let body = '';
-    req.on('data', c => { body += c; });
-    req.on('end', async () => {
-      try {
-        const payload = JSON.parse(body || '{}');
-        if (supabase && payload.id) {
-          await supabase.from('chat_sessions').delete().eq('id', payload.id);
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ success: true, supabase: Boolean(supabase) }));
-      } catch (e) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: e.message }));
+    try {
+      const payload = await parseRequestBody(req);
+      if (supabase && payload.id) {
+        await supabase.from('chat_sessions').delete().eq('id', payload.id);
       }
-    });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ success: true, supabase: Boolean(supabase) }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
     return;
   }
 }
