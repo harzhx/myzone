@@ -771,6 +771,63 @@ function initProjectEvents() {
 
 // ========================= MONTHLY GYM CALENDAR TRACKER =========================
 
+function getSortedGymTriggers(gym) {
+  let allTriggers = Array.isArray(gym?.triggers) ? [...gym.triggers] : [];
+
+  // Extract exit and enter events from all session logs
+  if (Array.isArray(gym?.sessions)) {
+    gym.sessions.forEach((sess, sIdx) => {
+      // Exit trigger
+      if (sess.exit_time && sess.exit_time !== 'null' && sess.exit_time !== 'In progress...' && sess.exit_time !== 'In Progress') {
+        const exitTimeStr = sess.exit_time;
+        const exists = allTriggers.some(t => t.event === 'exit' && (t.time === exitTimeStr || t.display_time?.includes(exitTimeStr)));
+        if (!exists) {
+          allTriggers.push({
+            id: `sess_exit_${sess.id || sIdx}`,
+            event: 'exit',
+            date: sess.date,
+            time: exitTimeStr,
+            display_time: `${sess.date} · ${exitTimeStr}`,
+            detected_by: sess.detected_by || 'Bestrong Geofence (Automatic)'
+          });
+        }
+      }
+      // Enter trigger
+      if (sess.enter_time && sess.enter_time !== 'Auto-detected') {
+        const enterTimeStr = sess.enter_time;
+        const exists = allTriggers.some(t => t.event === 'enter' && (t.time === enterTimeStr || t.display_time?.includes(enterTimeStr)));
+        if (!exists) {
+          allTriggers.push({
+            id: `sess_enter_${sess.id || sIdx}`,
+            event: 'enter',
+            date: sess.date,
+            time: enterTimeStr,
+            display_time: `${sess.date} · ${enterTimeStr}`,
+            detected_by: sess.detected_by || 'Bestrong Geofence (Automatic)'
+          });
+        }
+      }
+    });
+  }
+
+  // Parse time helper (handles ISO string or "YYYY-MM-DD hh:mm AM/PM")
+  const parseTriggerTime = (t) => {
+    if (t.timestamp) {
+      const ts = new Date(t.timestamp).getTime();
+      if (!isNaN(ts)) return ts;
+    }
+    if (t.date && t.time) {
+      const d = new Date(`${t.date} ${t.time}`);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+    return 0;
+  };
+
+  // Sort newest first
+  allTriggers.sort((a, b) => parseTriggerTime(b) - parseTriggerTime(a));
+  return allTriggers;
+}
+
 function renderMonthlyGymCalendar() {
   const current = state.currentMonthDate;
   const year = current.getFullYear();
@@ -839,8 +896,10 @@ function renderMonthlyGymCalendar() {
 
   const sessionSourceTag = document.querySelector('.session-source-tag');
   const sessionStatusDot = document.querySelector('.live-dot-green');
-  const latestTrigger = (state.widgets?.gym?.triggers || [])[0];
-  const latestSession = sessions[0];
+  
+  // Calculate true latest trigger (Enter or Exit)
+  const sortedTriggers = getSortedGymTriggers(state.widgets?.gym);
+  const latestTrigger = sortedTriggers[0];
 
   if (latestTrigger) {
     const isToday = latestTrigger.date === todayStr;
@@ -855,23 +914,6 @@ function renderMonthlyGymCalendar() {
       }
     } else {
       sessionStatusTxt.textContent = `Latest: Exited ${dayLabel} at ${timeStr} · Completed`;
-      if (sessionStatusDot) {
-        sessionStatusDot.style.background = 'var(--clr-gold)';
-        sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-gold)';
-      }
-    }
-  } else if (latestSession) {
-    const isToday = latestSession.date === todayStr;
-    const dayLabel = isToday ? 'Today' : (latestSession.date || 'Recent');
-
-    if (latestSession.status === 'in_progress' || !latestSession.exit_time || latestSession.exit_time === 'In progress...' || latestSession.exit_time === 'In Progress') {
-      sessionStatusTxt.textContent = `Latest: Entered ${dayLabel} at ${latestSession.enter_time || ''} · In Progress`;
-      if (sessionStatusDot) {
-        sessionStatusDot.style.background = 'var(--clr-green)';
-        sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-green)';
-      }
-    } else {
-      sessionStatusTxt.textContent = `Latest: Exited ${dayLabel} at ${latestSession.exit_time} (${latestSession.enter_time || ''} – ${latestSession.exit_time}${latestSession.duration ? ` · ${latestSession.duration}` : ''})`;
       if (sessionStatusDot) {
         sessionStatusDot.style.background = 'var(--clr-gold)';
         sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-gold)';
@@ -952,62 +994,8 @@ function renderGeofenceModal() {
   const triggersCountEl = document.getElementById('geo-triggers-count');
   if (!triggersListEl) return;
 
-  // 1. Gather all explicit triggers
-  let allTriggers = Array.isArray(gym.triggers) ? [...gym.triggers] : [];
-
-  // 2. Also extract exit and enter events from session logs
-  if (Array.isArray(gym.sessions)) {
-    gym.sessions.forEach((sess, sIdx) => {
-      // Exit trigger if session has exit time
-      if (sess.exit_time && sess.exit_time !== 'null' && sess.exit_time !== 'In progress...' && sess.exit_time !== 'In Progress') {
-        const exitTimeStr = sess.exit_time;
-        const exists = allTriggers.some(t => t.event === 'exit' && (t.time === exitTimeStr || t.display_time?.includes(exitTimeStr)));
-        if (!exists) {
-          allTriggers.push({
-            id: `sess_exit_${sess.id || sIdx}`,
-            event: 'exit',
-            date: sess.date,
-            time: exitTimeStr,
-            display_time: `${sess.date} · ${exitTimeStr}`,
-            detected_by: sess.detected_by || 'Bestrong Geofence (Automatic)'
-          });
-        }
-      }
-      // Enter trigger if session has enter time
-      if (sess.enter_time && sess.enter_time !== 'Auto-detected') {
-        const enterTimeStr = sess.enter_time;
-        const exists = allTriggers.some(t => t.event === 'enter' && (t.time === enterTimeStr || t.display_time?.includes(enterTimeStr)));
-        if (!exists) {
-          allTriggers.push({
-            id: `sess_enter_${sess.id || sIdx}`,
-            event: 'enter',
-            date: sess.date,
-            time: enterTimeStr,
-            display_time: `${sess.date} · ${enterTimeStr}`,
-            detected_by: sess.detected_by || 'Bestrong Geofence (Automatic)'
-          });
-        }
-      }
-    });
-  }
-
-  // Helper to parse timestamp or date + time for sorting
-  const parseTriggerTime = (t) => {
-    if (t.timestamp) {
-      const ts = new Date(t.timestamp).getTime();
-      if (!isNaN(ts)) return ts;
-    }
-    if (t.date && t.time) {
-      const d = new Date(`${t.date} ${t.time}`);
-      if (!isNaN(d.getTime())) return d.getTime();
-    }
-    return 0;
-  };
-
-  // Sort newest first
-  allTriggers.sort((a, b) => parseTriggerTime(b) - parseTriggerTime(a));
-
-  // Take the most recent 5 triggers
+  // Use unified sorted triggers
+  const allTriggers = getSortedGymTriggers(gym);
   const last5 = allTriggers.slice(0, 5);
 
   if (triggersCountEl) {

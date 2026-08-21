@@ -232,7 +232,9 @@ async function serveWidgets(res) {
               visits: gymStreak?.visits || [],
               goal_per_month: gymStreak?.goal_per_month || 20,
               streak_weeks: gymStreak?.streak_weeks || 3,
-              sessions: gymLogs || []
+              geofence: gymStreak?.geofence || { name: 'Bestrong Gym' },
+              sessions: gymLogs || [],
+              triggers: gymStreak?.triggers || []
             },
             instagram: { enabled: true, handles: [] }
           };
@@ -434,6 +436,7 @@ async function handleLocationEvent(req, res) {
         await supabase.from('gym_streak').upsert({
           id: 'current',
           visits: current.gym.visits,
+          triggers: current.gym.triggers || [],
           updated_at: new Date().toISOString()
         });
       } catch (sbErr) {
