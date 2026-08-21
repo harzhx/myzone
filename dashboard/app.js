@@ -823,11 +823,12 @@ function renderMonthlyGymCalendar() {
       <div class="gym-month-dot"></div>
     `;
 
-    cell.addEventListener('click', () => {
-      toggleGymDate(dateStr);
-    });
-
     gymMonthGrid.appendChild(cell);
+  }
+
+  const gymName = state.widgets?.gym?.geofence?.name || "Bestrong Gym";
+  if (btnGeofenceCfg) {
+    btnGeofenceCfg.textContent = `📍 ${gymName}`;
   }
 
   const pct = Math.min(100, Math.round((monthCompletedCount / goal) * 100));
@@ -887,6 +888,92 @@ function initMonthlyCalendarNav() {
     );
     renderMonthlyGymCalendar();
   });
+}
+
+function renderGeofenceModal() {
+  const gym = state.widgets?.gym || {};
+  const gymName = gym.geofence?.name || "Bestrong Gym";
+  const goal = gym.goal_per_month || 20;
+
+  if (geoInputName) geoInputName.value = gymName;
+  if (geoInputGoal) geoInputGoal.value = goal;
+
+  const modalTitle = document.getElementById('geofence-modal-title');
+  if (modalTitle) {
+    modalTitle.textContent = `📍 ${gymName} Settings`;
+  }
+
+  if (btnGeofenceCfg) {
+    btnGeofenceCfg.textContent = `📍 ${gymName}`;
+  }
+
+  const triggersListEl = document.getElementById('geo-triggers-list');
+  const triggersCountEl = document.getElementById('geo-triggers-count');
+  if (!triggersListEl) return;
+
+  // 1. Gather triggers from state.widgets.gym.triggers
+  let triggers = Array.isArray(gym.triggers) ? [...gym.triggers] : [];
+
+  // 2. Fallback: Synthesize from session enter/exit times if triggers array is empty
+  if (triggers.length === 0 && Array.isArray(gym.sessions) && gym.sessions.length > 0) {
+    gym.sessions.forEach(sess => {
+      if (sess.exit_time) {
+        triggers.push({
+          id: `${sess.id}_exit`,
+          event: 'exit',
+          date: sess.date,
+          time: sess.exit_time,
+          display_time: `${sess.date} · ${sess.exit_time}`,
+          detected_by: sess.detected_by || 'MacroDroid Geofence'
+        });
+      }
+      if (sess.enter_time) {
+        triggers.push({
+          id: `${sess.id}_enter`,
+          event: 'enter',
+          date: sess.date,
+          time: sess.enter_time,
+          display_time: `${sess.date} · ${sess.enter_time}`,
+          detected_by: sess.detected_by || 'MacroDroid Geofence'
+        });
+      }
+    });
+  }
+
+  // Take the most recent 5 triggers
+  const last5 = triggers.slice(0, 5);
+
+  if (triggersCountEl) {
+    triggersCountEl.textContent = last5.length > 0 ? `${last5.length} Recent Logged` : 'Live Log';
+  }
+
+  if (last5.length === 0) {
+    triggersListEl.innerHTML = `
+      <div class="geo-triggers-empty">
+        <span>📡 No mobile triggers logged yet.</span><br>
+        <span style="font-size:0.72rem;opacity:0.75;">When MacroDroid triggers an entry or exit webhook, the last 5 trigger timings will appear here automatically.</span>
+      </div>
+    `;
+    return;
+  }
+
+  triggersListEl.innerHTML = last5.map(trig => {
+    const isEnter = trig.event === 'enter';
+    const badgeCls = isEnter ? 'enter' : 'exit';
+    const badgeText = isEnter ? '🟢 ENTER' : '🔴 EXIT';
+    const timeDisplay = trig.display_time || (trig.time ? `${trig.date || 'Today'} · ${trig.time}` : (trig.timestamp ? new Date(trig.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Logged'));
+    const sourceDisplay = trig.detected_by || 'MacroDroid Geofence';
+
+    return `
+      <div class="geo-trigger-row">
+        <div class="geo-trigger-left">
+          <span class="geo-trigger-badge ${badgeCls}">${badgeText}</span>
+          <span class="geo-trigger-time">${timeDisplay}</span>
+        </div>
+        <span class="geo-trigger-source">${sourceDisplay}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 // ========================= ARTICLES & NEWSLETTER SECTION =========================
@@ -1157,6 +1244,7 @@ function init() {
 
   // Geofence Modal
   btnGeofenceCfg.addEventListener('click', () => {
+    renderGeofenceModal();
     geofenceModal.style.display = 'flex';
   });
   geofenceCloseBtn.addEventListener('click', () => {
@@ -1166,10 +1254,13 @@ function init() {
     geofenceModal.style.display = 'none';
   });
   btnSaveGeofence.addEventListener('click', async () => {
-    state.widgets.gym.geofence.name = geoInputName.value || "Bestrong Gym";
+    state.widgets.gym = state.widgets.gym || {};
+    state.widgets.gym.geofence = state.widgets.gym.geofence || {};
+    state.widgets.gym.geofence.name = (geoInputName.value || "Bestrong Gym").trim();
     state.widgets.gym.goal_per_month = parseInt(geoInputGoal.value) || 20;
     saveToStorage();
     renderMonthlyGymCalendar();
+    renderGeofenceModal();
     showToast('📍 Geofence settings saved!', 'saved-toast');
     try {
       await fetch(API_WIDGETS, {

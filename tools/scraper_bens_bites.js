@@ -116,7 +116,7 @@ export async function scrapeBensBites() {
 }
 
 // --- CLI entrypoint ---
-if (process.argv[1].includes('scraper_bens_bites')) {
+if (process.argv[1]?.includes('scraper_bens_bites')) {
   const result = await scrapeBensBites();
   if (result.error) console.error('ERROR:', result.error);
   console.log(JSON.stringify(result.articles, null, 2));

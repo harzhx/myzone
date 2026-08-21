@@ -99,7 +99,7 @@ export async function scrapeRundown() {
 }
 
 // --- CLI entrypoint ---
-if (process.argv[1].includes('scraper_rundown')) {
+if (process.argv[1]?.includes('scraper_rundown')) {
   const result = await scrapeRundown();
   if (result.error) console.error('ERROR:', result.error);
   console.log(JSON.stringify(result.articles, null, 2));

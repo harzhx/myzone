@@ -461,22 +461,14 @@
   <div class="modal-backdrop" id="geofence-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="geofence-modal-title">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="geofence-modal-title">📍 Bestrong Gym Geofencing Setup</h3>
+        <h3 class="modal-title" id="geofence-modal-title">📍 Bestrong Gym Settings</h3>
         <button class="modal-close" id="geofence-modal-close" aria-label="Close modal">✕</button>
       </div>
       <div class="modal-body">
-        <p class="modal-desc">MacroDroid on your Android phone automatically pings this endpoint when you step inside <strong>Bestrong Gym</strong>, lighting up the monthly calendar dots with your exact entry and exit times.</p>
+        <p class="modal-desc">Geofence automation & configuration. Automatically logs workouts when you enter and exit the gym.</p>
         
         <div class="integration-item">
-          <div class="integration-badge">🤖 MacroDroid Android Webhook</div>
-          <pre class="code-box"><code>POST http://192.168.1.10:8000/api/gym/location-event
-Content-Type: application/json
-
-{"event": "enter"}</code></pre>
-        </div>
-
-        <div class="integration-item">
-          <div class="integration-badge">📍 Current Geofence Configuration</div>
+          <div class="integration-badge">📍 Geofence Configuration</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
             <label style="font-size:0.75rem;font-weight:600;">Gym Name:
               <input type="text" id="geo-input-name" class="geo-input" value="Bestrong Gym" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--clr-border);background:var(--clr-surface-3);color:var(--clr-ink);" />
@@ -486,6 +478,16 @@ Content-Type: application/json
             </label>
           </div>
           <button class="btn-primary" id="btn-save-geofence" style="margin-top:10px;padding:6px 16px;font-size:0.78rem;">Save Settings</button>
+        </div>
+
+        <div class="integration-item" style="margin-top:14px;">
+          <div class="integration-badge" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>⏱️ Last 5 App Triggers</span>
+            <span id="geo-triggers-count" style="font-size:0.7rem;font-weight:600;color:var(--clr-gold);">Live Log</span>
+          </div>
+          <div id="geo-triggers-list" class="geo-triggers-list" style="margin-top:8px;">
+            <!-- Rendered dynamically by JS -->
+          </div>
         </div>
       </div>
       <div class="modal-footer">

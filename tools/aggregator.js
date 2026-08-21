@@ -143,7 +143,7 @@ export async function aggregate() {
 }
 
 // --- CLI entrypoint ---
-if (process.argv[1].includes('aggregator')) {
+if (process.argv[1]?.includes('aggregator')) {
   const result = await aggregate();
   process.exit(result.errors.length >= 2 ? 1 : 0);
 }

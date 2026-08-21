@@ -362,10 +362,23 @@ async function handleLocationEvent(req, res) {
     current.gym = current.gym || {};
     current.gym.visits = current.gym.visits || [];
     current.gym.sessions = current.gym.sessions || [];
+    current.gym.triggers = current.gym.triggers || [];
 
     if (!current.gym.visits.includes(dateStr)) {
       current.gym.visits.push(dateStr);
     }
+
+    // Record incoming trigger event for the recent trigger history
+    const triggerRecord = {
+      id: `trig_${Date.now()}`,
+      event: eventType,
+      timestamp: eventTime.toISOString(),
+      time: timeFormatted,
+      date: dateStr,
+      display_time: `${dateStr} · ${timeFormatted}`,
+      detected_by: payload.source || (payload.device ? `${payload.device} (MacroDroid)` : 'MacroDroid Geofence')
+    };
+    current.gym.triggers = [triggerRecord, ...current.gym.triggers.filter(t => t.id !== triggerRecord.id)].slice(0, 15);
 
     let activeSession = current.gym.sessions.find(s => s.date === dateStr && s.status === 'in_progress');
 
