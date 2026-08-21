@@ -10,6 +10,7 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import { aggregate } from './tools/aggregator.js';
@@ -52,6 +53,177 @@ const DASHBOARD_DIR = path.join(__dirname, 'dashboard');
 const TMP_DIR = process.env.VERCEL ? os.tmpdir() : path.join(__dirname, '.tmp');
 const STATE_FILE = path.join(TMP_DIR, 'articles.json');
 const WIDGETS_FILE = path.join(TMP_DIR, 'widgets.json');
+const USERS_FILE = path.join(TMP_DIR, 'users.json');
+const JWT_SECRET = process.env.JWT_SECRET || 'myzone_secret_jwt_key_2026_super_secure';
+
+function ensureTmpDir() {
+  if (!fs.existsSync(TMP_DIR)) {
+    try { fs.mkdirSync(TMP_DIR, { recursive: true }); } catch (e) {}
+  }
+}
+ensureTmpDir();
+
+// ============================================================
+// AUTHENTICATION & ROLE MANAGEMENT (God Mode vs. Sandbox Mode)
+// ============================================================
+
+function isEmailAdmin(email) {
+  if (!email || typeof email !== 'string') return false;
+  const rawList = process.env.ADMIN_EMAILS || '';
+  const adminEmails = rawList
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+  return adminEmails.includes(email.trim().toLowerCase());
+}
+
+function hashPassword(password, salt) {
+  const actualSalt = salt || crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, actualSalt, 1000, 64, 'sha512').toString('hex');
+  return { hash, salt: actualSalt };
+}
+
+function verifyPassword(password, salt, hash) {
+  if (!password || !salt || !hash) return false;
+  const check = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return check === hash;
+}
+
+function base64UrlEncode(str) {
+  return Buffer.from(str).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function base64UrlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return Buffer.from(str, 'base64').toString('utf8');
+}
+
+function signJwt(payload, expiresInSeconds = 86400 * 30) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+  const fullPayload = { ...payload, exp };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(fullPayload));
+  const signature = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+function verifyJwt(token) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+
+  const [encodedHeader, encodedPayload, signature] = parts;
+  const expectedSig = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+
+  if (signature !== expectedSig) return null;
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(encodedPayload));
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    return payload;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function loadUsers() {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('auth_users').select('*');
+      if (!error && Array.isArray(data)) {
+        return data;
+      }
+    } catch (e) {}
+  }
+
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    }
+  } catch (e) {}
+  return [];
+}
+
+async function saveUserRecord(userRecord) {
+  const users = await loadUsers();
+  const existingIdx = users.findIndex(u => u.id === userRecord.id || (u.email && u.email.toLowerCase() === userRecord.email.toLowerCase()));
+  if (existingIdx >= 0) {
+    users[existingIdx] = userRecord;
+  } else {
+    users.push(userRecord);
+  }
+
+  try {
+    ensureTmpDir();
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+  } catch (e) {}
+
+  if (supabase) {
+    try {
+      await supabase.from('auth_users').upsert({
+        id: userRecord.id,
+        email: userRecord.email,
+        name: userRecord.name,
+        password_hash: userRecord.password_hash,
+        password_salt: userRecord.password_salt,
+        role: userRecord.role,
+        is_admin: userRecord.is_admin,
+        created_at: userRecord.created_at,
+        updated_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Supabase auth_users sync notice:', e.message);
+    }
+  }
+}
+
+async function findUserByEmail(email) {
+  const users = await loadUsers();
+  return users.find(u => (u.email || '').toLowerCase() === (email || '').toLowerCase());
+}
+
+function getAuthUser(req) {
+  const authHeader = req.headers?.authorization || '';
+  let token = '';
+  if (authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7).trim();
+  }
+  if (!token && req.headers?.cookie) {
+    const match = req.headers.cookie.match(/myzone_auth_token=([^;]+)/);
+    if (match) token = decodeURIComponent(match[1]);
+  }
+
+  if (!token) return null;
+  const payload = verifyJwt(token);
+  if (!payload) return null;
+
+  const isAdmin = isEmailAdmin(payload.email);
+  return {
+    id: payload.userId || payload.id,
+    email: payload.email,
+    name: payload.name || payload.email.split('@')[0],
+    role: isAdmin ? 'admin' : 'user',
+    isAdmin
+  };
+}
 
 const MIME_TYPES = {
   '.html': 'text/html',
@@ -280,7 +452,15 @@ async function serveWidgets(res) {
 
 async function updateWidgets(req, res) {
   try {
+    const authUser = getAuthUser(req);
     const parsed = await parseRequestBody(req);
+
+    // Sandbox Protection: If user is not Admin (God Mode), acknowledge mutation without saving to server master DB
+    if (!authUser || !authUser.isAdmin) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ success: true, sandbox: true, message: 'Sandbox mode: local changes only' }));
+      return;
+    }
 
     // Sync with Supabase
     if (supabase) {
@@ -526,7 +706,20 @@ async function handleBotChatEndpoint(req, res) {
 
     // If response includes an automated social media / tweet action, dispatch to Make.com Webhook
     if (response && response.action && response.action.type === 'tweet' && response.action.data?.text) {
+      const authUser = getAuthUser(req);
       const webhookUrl = process.env.MAKE_WEBHOOK_URL || process.env.MAKE_BUFFER_WEBHOOK_URL;
+
+      // Sandbox Protection: Simulate tweet dispatch without firing real webhooks
+      if (!authUser || !authUser.isAdmin) {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          success: true,
+          sandbox: true,
+          message: 'Sandbox mode: Social dispatch simulated locally.'
+        }));
+        return;
+      }
+      
       if (webhookUrl && !webhookUrl.includes('your-custom-webhook-id')) {
         try {
           await dispatchToMakeWebhook(response.action.data.text, webhookUrl);
@@ -1137,8 +1330,19 @@ async function handleBotWebhookDispatch(req, res) {
       return;
     }
 
-    const targetWebhook = customWebhook || process.env.MAKE_BUFFER_WEBHOOK_URL;
-    const isPlaceholder = !targetWebhook || targetWebhook.includes('your-custom-webhook-id') || targetWebhook.includes('placeholder');
+    const targetWebhook = (payload.webhook_url || process.env.MAKE_WEBHOOK_URL || process.env.MAKE_BUFFER_WEBHOOK_URL || '').trim();
+
+    // Sandbox Protection: Simulate tweet dispatch without firing real network webhooks
+    if (!authUser || !authUser.isAdmin) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({
+        success: true,
+        sandbox: true,
+        mode: 'sandbox_simulated',
+        message: 'Sandbox Mode: Post simulated successfully in UI without firing external webhook.'
+      }));
+      return;
+    }
 
     const dispatchPayload = {
       action,
@@ -1259,6 +1463,13 @@ async function handleBotSessionsEndpoint(req, res) {
 
   if (req.method === 'POST') {
     try {
+      const authUser = getAuthUser(req);
+      if (!authUser || !authUser.isAdmin) {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, sandbox: true, message: 'Sandbox mode: session saved locally only' }));
+        return;
+      }
+
       const payload = await parseRequestBody(req);
       if (supabase && payload.id) {
         await supabase.from('chat_sessions').upsert({
@@ -1279,6 +1490,13 @@ async function handleBotSessionsEndpoint(req, res) {
 
   if (req.method === 'DELETE') {
     try {
+      const authUser = getAuthUser(req);
+      if (!authUser || !authUser.isAdmin) {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ success: true, sandbox: true, message: 'Sandbox mode: session deleted locally only' }));
+        return;
+      }
+
       const payload = await parseRequestBody(req);
       if (supabase && payload.id) {
         await supabase.from('chat_sessions').delete().eq('id', payload.id);
@@ -1291,6 +1509,170 @@ async function handleBotSessionsEndpoint(req, res) {
     }
     return;
   }
+}
+
+async function handleRegisterEndpoint(req, res) {
+  try {
+    const payload = await parseRequestBody(req);
+    const email = (payload.email || '').trim().toLowerCase();
+    const name = (payload.name || '').trim() || email.split('@')[0];
+    const password = payload.password || '';
+
+    if (!email || !email.includes('@')) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Please enter a valid email address.' }));
+      return;
+    }
+
+    if (!password || password.length < 4) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Password must be at least 4 characters.' }));
+      return;
+    }
+
+    const existingUser = await findUserByEmail(email);
+    if (existingUser) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'An account with this email already exists. Please log in.' }));
+      return;
+    }
+
+    const isAdmin = isEmailAdmin(email);
+    const role = isAdmin ? 'admin' : 'user';
+    const { hash, salt } = hashPassword(password);
+    const userId = 'usr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+
+    const newUser = {
+      id: userId,
+      email,
+      name,
+      password_hash: hash,
+      password_salt: salt,
+      role,
+      is_admin: isAdmin,
+      created_at: new Date().toISOString()
+    };
+
+    await saveUserRecord(newUser);
+
+    const token = signJwt({
+      userId: newUser.id,
+      email: newUser.email,
+      name: newUser.name,
+      role,
+      isAdmin
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Set-Cookie': `myzone_auth_token=${token}; Path=/; SameSite=Lax; Max-Age=${86400 * 30}`
+    });
+    res.end(JSON.stringify({
+      success: true,
+      token,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        role,
+        isAdmin
+      }
+    }));
+  } catch (e) {
+    console.error('[Register Error]:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
+async function handleLoginEndpoint(req, res) {
+  try {
+    const payload = await parseRequestBody(req);
+    const email = (payload.email || '').trim().toLowerCase();
+    const password = payload.password || '';
+
+    if (!email || !password) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Email and password are required.' }));
+      return;
+    }
+
+    const user = await findUserByEmail(email);
+    if (!user) {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Invalid email or password.' }));
+      return;
+    }
+
+    const isValid = verifyPassword(password, user.password_salt, user.password_hash);
+    if (!isValid) {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Invalid email or password.' }));
+      return;
+    }
+
+    const isAdmin = isEmailAdmin(email);
+    const role = isAdmin ? 'admin' : 'user';
+
+    const token = signJwt({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role,
+      isAdmin
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Set-Cookie': `myzone_auth_token=${token}; Path=/; SameSite=Lax; Max-Age=${86400 * 30}`
+    });
+    res.end(JSON.stringify({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role,
+        isAdmin
+      }
+    }));
+  } catch (e) {
+    console.error('[Login Error]:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
+async function handleAuthMeEndpoint(req, res) {
+  try {
+    const user = getAuthUser(req);
+    if (!user) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ authenticated: false, user: null }));
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({
+      authenticated: true,
+      user
+    }));
+  } catch (e) {
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
+async function handleLogoutEndpoint(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Set-Cookie': `myzone_auth_token=; Path=/; SameSite=Lax; Max-Age=0`
+  });
+  res.end(JSON.stringify({ success: true }));
 }
 
 // ============================================================
@@ -1306,10 +1688,27 @@ export async function handleRequest(req, res) {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Range',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Range',
     });
     res.end();
     return;
+  }
+
+  // Auth REST API routes
+  if (pathname === '/api/auth/register' && req.method === 'POST') {
+    return handleRegisterEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/login' && req.method === 'POST') {
+    return handleLoginEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/me' && (req.method === 'GET' || req.method === 'POST')) {
+    return handleAuthMeEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/logout' && req.method === 'POST') {
+    return handleLogoutEndpoint(req, res);
   }
 
   // REST API routes

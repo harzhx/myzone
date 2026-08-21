@@ -9,6 +9,10 @@ const API_GYM_LOC  = '/api/gym/location-event';
 const API_BOT_CHAT = '/api/bot/chat';
 const API_BOT_DISPATCH = '/api/bot/dispatch-webhook';
 const API_BOT_TRANSCRIBE = '/api/bot/transcribe';
+const API_AUTH_REGISTER = '/api/auth/register';
+const API_AUTH_LOGIN    = '/api/auth/login';
+const API_AUTH_ME       = '/api/auth/me';
+const API_AUTH_LOGOUT   = '/api/auth/logout';
 
 const LS_SAVED_IDS = 'my_zone_saved_ids';
 const LS_ARTICLES  = 'my_zone_articles';
@@ -21,9 +25,16 @@ const LS_WEBHOOK_URL='my_zone_webhook_url';
 const LS_AI_CHAT   = 'my_zone_ai_chat';
 const LS_AI_SESSIONS = 'bhondu_ai_chat_sessions';
 const LS_AI_ACTIVE_SESSION = 'bhondu_ai_active_session';
+const LS_AUTH_TOKEN = 'myzone_auth_token';
 
 // ========================= STATE =========================
 let state = {
+  auth: {
+    token: localStorage.getItem(LS_AUTH_TOKEN) || null,
+    user: null,
+    isAuthenticated: false,
+    isAdmin: false
+  },
   articles: [],
   filter: 'all',
   savedIds: new Set(),
@@ -177,6 +188,41 @@ const webhookModalClose=document.getElementById('webhook-modal-close');
 const btnCancelWebhook= document.getElementById('btn-cancel-webhook');
 const btnSaveWebhook  = document.getElementById('btn-save-webhook');
 const webhookUrlInput = document.getElementById('webhook-url-input');
+
+// Auth & Roles DOM Refs
+const navbarAuthContainer = document.getElementById('navbar-auth-container');
+const btnOpenAuth         = document.getElementById('btn-open-auth');
+const userProfileWrapper  = document.getElementById('user-profile-wrapper');
+const btnUserProfile      = document.getElementById('btn-user-profile');
+const userAvatarInitials  = document.getElementById('user-avatar-initials');
+const userDisplayName     = document.getElementById('user-display-name');
+const userRoleBadge       = document.getElementById('user-role-badge');
+const userProfileDropdown = document.getElementById('user-profile-dropdown');
+const dropdownUserName    = document.getElementById('dropdown-user-name');
+const dropdownUserEmail   = document.getElementById('dropdown-user-email');
+const dropdownRoleTitle   = document.getElementById('dropdown-role-title');
+const dropdownRoleText    = document.getElementById('dropdown-role-text');
+const btnSwitchAccount    = document.getElementById('btn-switch-account');
+const btnLogout           = document.getElementById('btn-logout');
+
+// Auth Modal DOM Refs
+const authModal           = document.getElementById('auth-modal');
+const authModalTitle      = document.getElementById('auth-modal-title');
+const authModalSubtitle   = document.getElementById('auth-modal-subtitle');
+const authModalClose      = document.getElementById('auth-modal-close');
+const authTabLogin        = document.getElementById('auth-tab-login');
+const authTabSignup       = document.getElementById('auth-tab-signup');
+const authAlert           = document.getElementById('auth-alert');
+const authForm            = document.getElementById('auth-form');
+const authFieldName       = document.getElementById('auth-field-name');
+const authInputName       = document.getElementById('auth-input-name');
+const authInputEmail      = document.getElementById('auth-input-email');
+const authInputPassword   = document.getElementById('auth-input-password');
+const btnTogglePw         = document.getElementById('btn-toggle-pw');
+const btnAuthSubmit       = document.getElementById('btn-auth-submit');
+const authSubmitText      = document.getElementById('auth-submit-text');
+const authTogglePrompt    = document.getElementById('auth-toggle-prompt');
+const btnAuthToggleMode   = document.getElementById('btn-auth-toggle-mode');
 
 // Geofence Modal
 const geofenceModal   = document.getElementById('geofence-modal');
@@ -592,6 +638,34 @@ function renderProjectsWidget() {
   });
 }
 
+// ========================= CENTRALIZED SERVER MUTATION (God Mode vs Sandbox Mode) =========================
+
+async function saveWidgetsToServer(customData) {
+  // In Sandbox Mode (Regular Users & Guests):
+  // Updates remain strictly local to this browser session.
+  // The fetch(POST) call is intentionally skipped so the master server database is never altered.
+  if (!state.auth?.isAdmin) {
+    console.info('[Sandbox Mode]: Action executed locally in browser. Master server write skipped.');
+    return;
+  }
+
+  // In God Mode (Admins):
+  // Dispatch authenticated persistent mutation to backend API & Supabase
+  try {
+    const token = state.auth?.token || localStorage.getItem(LS_AUTH_TOKEN);
+    await fetch(API_WIDGETS, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(customData || state.widgets)
+    });
+  } catch (e) {
+    console.warn('[Admin Save Error]:', e.message);
+  }
+}
+
 async function reorderProjects(sourceId, targetId, insertBefore) {
   const projects = [...(state.widgets.projects || [])];
   const sourceIndex = projects.findIndex(p => p.id === sourceId);
@@ -610,13 +684,7 @@ async function reorderProjects(sourceId, targetId, insertBefore) {
   renderProjectsWidget();
   showToast(`Moved "${movedProject.name}"! 📌`, 'saved-toast');
 
-  try {
-    await fetch(API_WIDGETS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projects: state.widgets.projects }),
-    });
-  } catch (e) {}
+  saveWidgetsToServer({ projects: state.widgets.projects });
 }
 
 async function updateProjectStatus(id, newStatus) {
@@ -630,13 +698,7 @@ async function updateProjectStatus(id, newStatus) {
   renderProjectsWidget();
   showToast(`Updated "${project.name}" to ${newStatus.replace('_', ' ')}!`, 'saved-toast');
 
-  try {
-    await fetch(API_WIDGETS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projects: state.widgets.projects }),
-    });
-  } catch (e) {}
+  saveWidgetsToServer({ projects: state.widgets.projects });
 }
 
 async function adjustProjectProgress(id, delta) {
@@ -649,13 +711,7 @@ async function adjustProjectProgress(id, delta) {
   saveToStorage();
   renderProjectsWidget();
 
-  try {
-    await fetch(API_WIDGETS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projects: state.widgets.projects }),
-    });
-  } catch (e) {}
+  saveWidgetsToServer({ projects: state.widgets.projects });
 }
 
 function openNewProjectModal() {
@@ -693,13 +749,7 @@ async function deleteProject(id) {
   renderProjectsWidget();
   showToast('Project deleted');
 
-  try {
-    await fetch(API_WIDGETS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projects: state.widgets.projects }),
-    });
-  } catch (e) {}
+  saveWidgetsToServer({ projects: state.widgets.projects });
 }
 
 function initProjectEvents() {
@@ -760,13 +810,7 @@ function initProjectEvents() {
     saveToStorage();
     renderProjectsWidget();
 
-    try {
-      await fetch(API_WIDGETS, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projects: state.widgets.projects }),
-      });
-    } catch (e) {}
+    saveWidgetsToServer({ projects: state.widgets.projects });
   });
 }
 
@@ -998,15 +1042,7 @@ async function toggleGymDate(dateStr) {
   renderMonthlyGymCalendar();
   saveToStorage();
 
-  try {
-    await fetch(API_WIDGETS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gym: state.widgets.gym }),
-    });
-  } catch (e) {
-    console.warn('Could not sync gym data to server:', e);
-  }
+  saveWidgetsToServer({ gym: state.widgets.gym });
 }
 
 function initMonthlyCalendarNav() {
@@ -1407,13 +1443,8 @@ function init() {
     renderMonthlyGymCalendar();
     renderGeofenceModal();
     showToast(`📍 Geofence settings saved! Monthly goal: ${goal} days`, 'saved-toast');
-    try {
-      await fetch(API_WIDGETS, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gym: state.widgets.gym }),
-      });
-    } catch (e) {}
+
+    saveWidgetsToServer({ gym: state.widgets.gym });
   });
 
   // Webhook Modal Open/Close
@@ -1445,6 +1476,9 @@ function init() {
       }
     }
   }, true);
+
+  // Auth System (God Mode vs Sandbox Mode)
+  initAuthSystem();
 
   // AI Chatbot & Webhook Modal
   initAiChatbot();
@@ -2071,13 +2105,7 @@ async function processAiUserCommand(rawInput) {
         renderProjectsWidget();
         showToast(`AI added project "${newProj.name}"! 🚀`, 'saved-toast');
 
-        try {
-          await fetch(API_WIDGETS, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projects: state.widgets.projects })
-          });
-        } catch (e) {}
+        saveWidgetsToServer({ projects: state.widgets.projects });
 
         actionCard = {
           type: 'project',
@@ -2100,13 +2128,7 @@ async function processAiUserCommand(rawInput) {
           renderProjectsWidget();
           showToast(`AI moved "${project.name}" to ${project.status.replace('_', ' ')}!`, 'saved-toast');
 
-          try {
-            await fetch(API_WIDGETS, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ projects: state.widgets.projects })
-            });
-          } catch (e) {}
+          saveWidgetsToServer({ projects: state.widgets.projects });
 
           actionCard = {
             type: 'project',
@@ -2124,13 +2146,7 @@ async function processAiUserCommand(rawInput) {
         renderProjectsWidget();
         showToast(`Deleted "${act.data.name}"`);
 
-        try {
-          await fetch(API_WIDGETS, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projects: state.widgets.projects })
-          });
-        } catch (e) {}
+        saveWidgetsToServer({ projects: state.widgets.projects });
       }
 
       // LOG GYM
@@ -2142,13 +2158,7 @@ async function processAiUserCommand(rawInput) {
           renderMonthlyGymCalendar();
           showToast('🏋️ Logged workout session!', 'saved-toast');
 
-          try {
-            await fetch(API_WIDGETS, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ gym: state.widgets.gym })
-            });
-          } catch (e) {}
+          saveWidgetsToServer({ gym: state.widgets.gym });
 
           actionCard = {
             type: 'gym',
@@ -2161,27 +2171,42 @@ async function processAiUserCommand(rawInput) {
 
       // TWEET / BUFFER
       else if (act.type === 'tweet' && act.data?.text) {
-        try {
-          const whRes = await fetch(API_BOT_DISPATCH, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'tweet',
-              text: act.data.text,
-              webhook_url: state.aiBot.webhookUrl || undefined
-            })
-          });
-          const whData = await whRes.json();
-          if (whData.success) {
-            actionCard = {
-              type: 'webhook',
-              badge: whData.mode === 'simulated' ? '⚡ Webhook Verified' : '✓ Dispatched to Scenario',
-              title: 'Tweet Broadcast Published',
-              desc: `Dispatched to Make.com / Buffer scenario`
-            };
-            showToast('🐦 Tweet dispatched via Webhook!', 'saved-toast');
-          }
-        } catch (e) {}
+        if (state.auth?.isAdmin) {
+          try {
+            const token = state.auth?.token || localStorage.getItem(LS_AUTH_TOKEN);
+            const whRes = await fetch(API_BOT_DISPATCH, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({
+                action: 'tweet',
+                text: act.data.text,
+                webhook_url: state.aiBot.webhookUrl || undefined
+              })
+            });
+            const whData = await whRes.json();
+            if (whData.success) {
+              actionCard = {
+                type: 'webhook',
+                badge: whData.mode === 'simulated' ? '⚡ Webhook Verified' : '✓ Dispatched to Scenario',
+                title: 'Tweet Broadcast Published',
+                desc: `Dispatched to Make.com / Buffer scenario`
+              };
+              showToast('🐦 Tweet dispatched via Webhook!', 'saved-toast');
+            }
+          } catch (e) {}
+        } else {
+          // Sandbox Mode: Simulate tweet broadcast in UI
+          actionCard = {
+            type: 'webhook',
+            badge: '🏖️ Sandbox Mode',
+            title: 'Tweet Broadcast Simulated',
+            desc: `Simulated locally in Sandbox mode`
+          };
+          showToast('🐦 Tweet simulated (Sandbox Mode)!', 'saved-toast');
+        }
       }
     }
 
@@ -2881,5 +2906,299 @@ function initWebhookModal() {
   }
 }
 
+// ============================================================
+// AUTHENTICATION & ROLE MANAGEMENT SYSTEM
+// ============================================================
+
+async function checkAuthSession() {
+  const token = state.auth.token || localStorage.getItem(LS_AUTH_TOKEN);
+  if (!token) {
+    state.auth.user = null;
+    state.auth.isAuthenticated = false;
+    state.auth.isAdmin = false;
+    renderAuthUI();
+    return;
+  }
+
+  try {
+    const res = await fetch(API_AUTH_ME, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (data.authenticated && data.user) {
+      state.auth.user = data.user;
+      state.auth.isAuthenticated = true;
+      state.auth.isAdmin = Boolean(data.user.isAdmin);
+      state.auth.token = token;
+    } else {
+      state.auth.token = null;
+      state.auth.user = null;
+      state.auth.isAuthenticated = false;
+      state.auth.isAdmin = false;
+      localStorage.removeItem(LS_AUTH_TOKEN);
+    }
+  } catch (e) {
+    console.warn('[Auth Check Error]:', e);
+  }
+
+  renderAuthUI();
+}
+
+function renderAuthUI() {
+  if (state.auth.isAuthenticated && state.auth.user) {
+    const user = state.auth.user;
+    if (btnOpenAuth) btnOpenAuth.style.display = 'none';
+    if (userProfileWrapper) userProfileWrapper.style.display = 'block';
+
+    const displayName = user.name || user.email.split('@')[0];
+    const initial = (displayName.charAt(0) || 'U').toUpperCase();
+
+    if (userAvatarInitials) userAvatarInitials.textContent = initial;
+    if (userDisplayName) userDisplayName.textContent = displayName;
+
+    if (userRoleBadge) {
+      if (user.isAdmin) {
+        userRoleBadge.className = 'role-badge god-mode';
+        userRoleBadge.textContent = '⚡ God Mode';
+        userRoleBadge.title = 'God Mode: Permanent changes saved to server database';
+      } else {
+        userRoleBadge.className = 'role-badge sandbox-mode';
+        userRoleBadge.textContent = '🏖️ Sandbox Mode';
+        userRoleBadge.title = 'Sandbox Mode: Interactive preview without modifying server database';
+      }
+    }
+
+    if (dropdownUserName) dropdownUserName.textContent = displayName;
+    if (dropdownUserEmail) dropdownUserEmail.textContent = user.email;
+
+    if (dropdownRoleTitle && dropdownRoleText) {
+      if (user.isAdmin) {
+        dropdownRoleTitle.textContent = '⚡ God Mode Active';
+        dropdownRoleText.textContent = 'Master changes are permanently saved to the server and database for all visitors.';
+      } else {
+        dropdownRoleTitle.textContent = '🏖️ Sandbox Mode Active';
+        dropdownRoleText.textContent = 'Interactive local preview. Master server updates are skipped to protect the official state.';
+      }
+    }
+  } else {
+    if (btnOpenAuth) btnOpenAuth.style.display = 'inline-flex';
+    if (userProfileWrapper) {
+      userProfileWrapper.style.display = 'none';
+      userProfileWrapper.classList.remove('is-open');
+    }
+    if (userProfileDropdown) userProfileDropdown.style.display = 'none';
+  }
+}
+
+let authMode = 'login'; // 'login' | 'signup'
+
+function setAuthMode(mode) {
+  authMode = mode;
+  if (authAlert) authAlert.style.display = 'none';
+
+  if (mode === 'signup') {
+    if (authTabSignup) { authTabSignup.classList.add('active'); authTabSignup.setAttribute('aria-selected', 'true'); }
+    if (authTabLogin) { authTabLogin.classList.remove('active'); authTabLogin.setAttribute('aria-selected', 'false'); }
+    if (authFieldName) authFieldName.style.display = 'flex';
+    if (authModalTitle) authModalTitle.textContent = 'Create an Account';
+    if (authModalSubtitle) authModalSubtitle.textContent = 'Sign up to get instant access to My Zone';
+    if (authSubmitText) authSubmitText.textContent = 'Create Account';
+    if (authTogglePrompt) authTogglePrompt.textContent = 'Already have an account?';
+    if (btnAuthToggleMode) btnAuthToggleMode.textContent = 'Log In';
+  } else {
+    if (authTabLogin) { authTabLogin.classList.add('active'); authTabLogin.setAttribute('aria-selected', 'true'); }
+    if (authTabSignup) { authTabSignup.classList.remove('active'); authTabSignup.setAttribute('aria-selected', 'false'); }
+    if (authFieldName) authFieldName.style.display = 'none';
+    if (authModalTitle) authModalTitle.textContent = 'Sign In to My Zone';
+    if (authModalSubtitle) authModalSubtitle.textContent = 'Access your personal hub, AI copilots, and trackers';
+    if (authSubmitText) authSubmitText.textContent = 'Log In';
+    if (authTogglePrompt) authTogglePrompt.textContent = "Don't have an account?";
+    if (btnAuthToggleMode) btnAuthToggleMode.textContent = 'Create an account';
+  }
+}
+
+function showAuthAlert(msg, isSuccess = false) {
+  if (!authAlert) return;
+  authAlert.textContent = msg;
+  authAlert.className = `auth-alert ${isSuccess ? 'success' : 'error'}`;
+  authAlert.style.display = 'block';
+}
+
+function openAuthModal(initialMode = 'login') {
+  setAuthMode(initialMode);
+  if (authInputEmail) authInputEmail.value = '';
+  if (authInputPassword) authInputPassword.value = '';
+  if (authInputName) authInputName.value = '';
+  if (authModal) authModal.style.display = 'flex';
+  setTimeout(() => {
+    if (initialMode === 'signup' && authInputName) authInputName.focus();
+    else if (authInputEmail) authInputEmail.focus();
+  }, 100);
+}
+
+function closeAuthModal() {
+  if (authModal) authModal.style.display = 'none';
+  if (authAlert) authAlert.style.display = 'none';
+}
+
+function initAuthSystem() {
+  // Check existing session
+  checkAuthSession();
+
+  // Open modal button in navbar
+  if (btnOpenAuth) {
+    btnOpenAuth.addEventListener('click', () => openAuthModal('login'));
+  }
+
+  // Close modal button
+  if (authModalClose) {
+    authModalClose.addEventListener('click', closeAuthModal);
+  }
+  if (authModal) {
+    authModal.addEventListener('click', (e) => {
+      if (e.target === authModal) closeAuthModal();
+    });
+  }
+
+  // Toggle mode tabs
+  if (authTabLogin) {
+    authTabLogin.addEventListener('click', () => setAuthMode('login'));
+  }
+  if (authTabSignup) {
+    authTabSignup.addEventListener('click', () => setAuthMode('signup'));
+  }
+  if (btnAuthToggleMode) {
+    btnAuthToggleMode.addEventListener('click', () => {
+      setAuthMode(authMode === 'login' ? 'signup' : 'login');
+    });
+  }
+
+  // Toggle password visibility
+  if (btnTogglePw && authInputPassword) {
+    btnTogglePw.addEventListener('click', () => {
+      const isPw = authInputPassword.type === 'password';
+      authInputPassword.type = isPw ? 'text' : 'password';
+      btnTogglePw.innerHTML = isPw
+        ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+        : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+    });
+  }
+
+  // User Profile Pill Dropdown toggle
+  if (btnUserProfile && userProfileDropdown && userProfileWrapper) {
+    btnUserProfile.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = userProfileDropdown.style.display === 'block';
+      userProfileDropdown.style.display = isOpen ? 'none' : 'block';
+      userProfileWrapper.classList.toggle('is-open', !isOpen);
+      btnUserProfile.setAttribute('aria-expanded', String(!isOpen));
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!userProfileWrapper.contains(e.target)) {
+        userProfileDropdown.style.display = 'none';
+        userProfileWrapper.classList.remove('is-open');
+        btnUserProfile.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  // Switch Account action
+  if (btnSwitchAccount) {
+    btnSwitchAccount.addEventListener('click', () => {
+      if (userProfileDropdown) userProfileDropdown.style.display = 'none';
+      if (userProfileWrapper) userProfileWrapper.classList.remove('is-open');
+      openAuthModal('login');
+    });
+  }
+
+  // Logout action
+  if (btnLogout) {
+    btnLogout.addEventListener('click', async () => {
+      try {
+        await fetch(API_AUTH_LOGOUT, { method: 'POST' });
+      } catch (e) {}
+
+      localStorage.removeItem(LS_AUTH_TOKEN);
+      state.auth.token = null;
+      state.auth.user = null;
+      state.auth.isAuthenticated = false;
+      state.auth.isAdmin = false;
+
+      renderAuthUI();
+      showToast('Logged out. You are now in Sandbox Mode.');
+      loadAllData(); // Reload master data from server
+    });
+  }
+
+  // Auth Form Submit
+  if (authForm) {
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = authInputEmail.value.trim();
+      const password = authInputPassword.value;
+      const name = authInputName ? authInputName.value.trim() : '';
+
+      if (!email || !password) {
+        showAuthAlert('Please enter both email and password.');
+        return;
+      }
+
+      if (authMode === 'signup' && password.length < 4) {
+        showAuthAlert('Password must be at least 4 characters long.');
+        return;
+      }
+
+      if (btnAuthSubmit) {
+        btnAuthSubmit.disabled = true;
+        if (authSubmitText) authSubmitText.textContent = authMode === 'signup' ? 'Creating Account...' : 'Logging in...';
+      }
+
+      try {
+        const endpoint = authMode === 'signup' ? API_AUTH_REGISTER : API_AUTH_LOGIN;
+        const payload = authMode === 'signup' ? { name, email, password } : { email, password };
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          showAuthAlert(data.error || 'Authentication failed. Please try again.');
+          return;
+        }
+
+        // Authentication Success
+        localStorage.setItem(LS_AUTH_TOKEN, data.token);
+        state.auth.token = data.token;
+        state.auth.user = data.user;
+        state.auth.isAuthenticated = true;
+        state.auth.isAdmin = Boolean(data.user.isAdmin);
+
+        closeAuthModal();
+        renderAuthUI();
+
+        if (data.user.isAdmin) {
+          showToast(`⚡ Welcome, ${data.user.name}! God Mode Active (Master writes enabled)`, 'saved-toast');
+        } else {
+          showToast(`🏖️ Welcome, ${data.user.name}! Sandbox Mode Active`, 'saved-toast');
+        }
+      } catch (err) {
+        showAuthAlert('Network error: ' + err.message);
+      } finally {
+        if (btnAuthSubmit) {
+          btnAuthSubmit.disabled = false;
+          if (authSubmitText) authSubmitText.textContent = authMode === 'signup' ? 'Create Account' : 'Log In';
+        }
+      }
+    });
+  }
+}
+
 document.addEventListener('DOMContentLoaded', init);
+
 
