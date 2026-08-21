@@ -1031,11 +1031,18 @@ function initMonthlyCalendarNav() {
 function renderGeofenceModal() {
   const gym = state.widgets?.gym || {};
   const gymName = gym.geofence?.name || "Bestrong Gym";
-  const goal = gym.goal_per_month || 20;
+  const current = state.currentMonthDate || new Date();
+  const maxDaysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+  const rawGoal = gym.goal_per_month || 20;
+  const goal = Math.min(Math.max(1, parseInt(rawGoal, 10) || 20), maxDaysInMonth);
 
   updateGymNameInUI(gymName);
 
-  if (geoInputGoal) geoInputGoal.value = goal;
+  if (geoInputGoal) {
+    geoInputGoal.min = 1;
+    geoInputGoal.max = maxDaysInMonth;
+    geoInputGoal.value = goal;
+  }
 
   const triggersListEl = document.getElementById('geo-triggers-list');
   const triggersCountEl = document.getElementById('geo-triggers-count');
@@ -1360,18 +1367,45 @@ function init() {
       geofenceModal.style.display = 'none';
     }
   });
+  if (geoInputGoal) {
+    geoInputGoal.addEventListener('input', () => {
+      const current = state.currentMonthDate || new Date();
+      const maxDaysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+      let val = parseInt(geoInputGoal.value, 10);
+      if (val > maxDaysInMonth) {
+        geoInputGoal.value = maxDaysInMonth;
+      }
+    });
+    geoInputGoal.addEventListener('blur', () => {
+      const current = state.currentMonthDate || new Date();
+      const maxDaysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+      let val = parseInt(geoInputGoal.value, 10);
+      if (isNaN(val) || val < 1) {
+        geoInputGoal.value = 1;
+      } else if (val > maxDaysInMonth) {
+        geoInputGoal.value = maxDaysInMonth;
+      }
+    });
+  }
   btnSaveGeofence.addEventListener('click', async () => {
     const newName = (geoInputName.value || "Bestrong Gym").trim();
+    const current = state.currentMonthDate || new Date();
+    const maxDaysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+    let goal = parseInt(geoInputGoal.value, 10);
+    if (isNaN(goal) || goal < 1) goal = 1;
+    if (goal > maxDaysInMonth) goal = maxDaysInMonth;
+    geoInputGoal.value = goal;
+
     state.widgets.gym = state.widgets.gym || {};
     state.widgets.gym.geofence = state.widgets.gym.geofence || {};
     state.widgets.gym.geofence.name = newName;
-    state.widgets.gym.goal_per_month = parseInt(geoInputGoal.value) || 20;
+    state.widgets.gym.goal_per_month = goal;
 
     updateGymNameInUI(newName);
     saveToStorage();
     renderMonthlyGymCalendar();
     renderGeofenceModal();
-    showToast('📍 Geofence settings saved!', 'saved-toast');
+    showToast(`📍 Geofence settings saved! Monthly goal: ${goal} days`, 'saved-toast');
     try {
       await fetch(API_WIDGETS, {
         method: 'POST',
