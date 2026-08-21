@@ -2330,108 +2330,226 @@ img { max-width: 100%; display: block; }
 
 /* Mobile Screens (<= 768px) */
 @media (max-width: 768px) {
-  html {
+  html, body {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
     font-size: 15px;
   }
+
+  /* Compact Top Navbar */
   .navbar {
+    height: auto;
     padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .navbar__logo {
+    order: 1;
+    gap: 8px;
+  }
+  .logo-mark {
+    width: 30px;
+    height: 30px;
   }
   .logo-text {
     font-size: 1rem;
   }
-  .logo-mark {
-    width: 32px;
-    height: 32px;
+  .navbar__right {
+    order: 2;
+    gap: 6px;
+    margin-left: auto;
   }
   .btn-theme-toggle {
-    padding: 5px 9px;
-    font-size: 0.72rem;
+    padding: 6px 8px;
+    font-size: 0.75rem;
+    gap: 0;
+  }
+  .btn-theme-toggle #theme-label {
+    display: none;
   }
   .btn-refresh {
+    padding: 6px 8px;
     width: 32px;
     height: 32px;
+    justify-content: center;
+    gap: 0;
   }
+  .btn-refresh #refresh-label {
+    display: none;
+  }
+  .status-pill {
+    padding: 6px 8px;
+    gap: 0;
+  }
+  .status-pill #status-text {
+    display: none;
+  }
+  .navbar__tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    display: flex !important;
+    gap: 4px;
+    padding: 3px 4px;
+    box-sizing: border-box;
+  }
+  .navbar__tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tab {
+    flex-shrink: 0;
+    padding: 5px 11px;
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  /* Page Layout */
   .page {
-    padding: 12px 10px 80px;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+    padding: 12px 12px 80px;
   }
+
+  /* Hero Section (Clean 2x2 Bento Stat Cards) */
   .hero {
+    width: 100%;
+    box-sizing: border-box;
     padding: 18px 14px;
     border-radius: var(--radius-lg);
-    margin-bottom: 18px;
+    margin: 10px 0 16px;
     gap: 14px;
+    flex-direction: column;
+    align-items: flex-start;
   }
   .hero__title {
     font-size: 1.35rem;
     line-height: 1.25;
   }
-  .hero__subtitle {
+  .hero__sub {
     font-size: 0.8rem;
+    line-height: 1.45;
   }
   .hero__stats {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    box-sizing: border-box;
+    margin-top: 4px;
   }
-  .hero-stat-card {
-    padding: 10px 12px;
+  .stat-divider {
+    display: none !important;
+  }
+  .stat-item {
+    background: var(--clr-surface);
+    border: 1px solid var(--clr-border);
     border-radius: var(--radius-md);
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    box-sizing: border-box;
   }
   .stat-num {
-    font-size: 1.35rem;
+    font-size: 1.3rem;
   }
-  .stat-lbl {
+  .stat-label {
     font-size: 0.65rem;
+    color: var(--clr-ink-3);
   }
 
-  /* Widgets */
-  .widgets-grid {
-    gap: 14px;
+  /* Widgets Bento Grid (Full-Width, Uncropped) */
+  .widgets-section {
+    width: 100%;
+    box-sizing: border-box;
     margin-bottom: 20px;
   }
+  .widgets-grid {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    grid-template-columns: 100% !important;
+    gap: 14px;
+  }
   .widget-card {
-    padding: 14px;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    padding: 14px 12px;
     border-radius: var(--radius-lg);
+  }
+  .widget-card__header {
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .widget-title-wrap {
+    min-width: 0;
+    flex: 1;
+    gap: 8px;
   }
   .widget-title {
     font-size: 0.95rem;
   }
   .widget-subtitle {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
+    line-height: 1.3;
   }
   .btn-geofence-config {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     padding: 4px 8px;
-    max-width: 140px;
+    max-width: 130px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex-shrink: 0;
   }
 
-  /* Gym Calendar */
+  /* Monthly Gym Calendar Tracker */
   .gym-month-nav-row {
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .gym-month-title {
-    font-size: 0.88rem;
+    font-size: 0.85rem;
   }
   .gym-week-labels {
+    width: 100%;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
     font-size: 0.62rem;
-    gap: 3px;
     margin-bottom: 4px;
   }
   .gym-month-grid {
-    gap: 3px;
+    width: 100%;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
     margin-bottom: 10px;
   }
   .gym-month-cell {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     min-height: 32px;
-    padding: 3px 1px;
-    border-radius: 6px;
+    padding: 3px 0;
+    border-radius: 5px;
     gap: 2px;
   }
   .gym-month-date-num {
-    font-size: 0.66rem;
+    font-size: 0.65rem;
   }
   .gym-month-dot {
     width: 5px;
@@ -2440,77 +2558,133 @@ img { max-width: 100%; display: block; }
   .gym-session-detail {
     flex-direction: column;
     align-items: flex-start;
-    gap: 5px;
+    gap: 4px;
     padding: 8px 10px;
     border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    width: 100%;
+    box-sizing: border-box;
   }
   .session-badge-pill {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     line-height: 1.3;
     flex-wrap: wrap;
+    word-break: break-word;
   }
   .session-source-tag {
-    font-size: 0.65rem;
+    font-size: 0.64rem;
   }
   .gym-stats-row {
-    flex-direction: row;
     flex-wrap: wrap;
     gap: 6px;
-    font-size: 0.72rem;
+    font-size: 0.7rem;
   }
 
-  /* Projects & Pipelines */
+  /* Projects & Pipelines Widget */
+  .projects-header-actions {
+    flex-shrink: 0;
+    gap: 6px;
+  }
+  .btn-new-project {
+    font-size: 0.7rem;
+    padding: 4px 10px;
+  }
   .project-status-tabs {
+    width: 100%;
+    box-sizing: border-box;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     padding: 3px;
     gap: 3px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .project-status-tabs::-webkit-scrollbar {
     display: none;
   }
   .proj-tab {
-    padding: 5px 9px;
-    font-size: 0.68rem;
+    padding: 4px 8px;
+    font-size: 0.66rem;
     flex-shrink: 0;
   }
+  .projects-list {
+    width: 100%;
+    box-sizing: border-box;
+  }
   .proj-card {
-    padding: 12px 14px;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 10px 12px;
     border-radius: var(--radius-md);
     gap: 8px;
   }
+  .proj-card-header {
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .proj-title-group {
+    min-width: 0;
+    flex: 1;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
   .proj-title {
-    font-size: 0.85rem;
+    font-size: 0.84rem;
+    word-break: break-word;
   }
-  .proj-desc {
-    font-size: 0.74rem;
+  .proj-status-btn {
+    padding: 3px 8px;
+    font-size: 0.68rem;
+    flex-shrink: 0;
   }
-  .proj-meta {
+  .proj-footer-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .proj-meta-left {
+    width: 100%;
     flex-wrap: wrap;
     gap: 6px;
     font-size: 0.65rem;
   }
+  .proj-actions-group {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .btn-proj-action {
+    font-size: 0.66rem;
+    padding: 3px 7px;
+  }
 
-  /* Articles */
+  /* Articles Section */
   .section-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
-    margin-bottom: 14px;
+    gap: 4px;
+    margin-bottom: 12px;
   }
   .section-title {
-    font-size: 1.15rem;
+    font-size: 1.1rem;
   }
   .section-sub {
-    font-size: 0.75rem;
+    font-size: 0.74rem;
   }
   .articles-grid {
-    grid-template-columns: 1fr;
+    width: 100%;
+    box-sizing: border-box;
+    grid-template-columns: 100%;
     gap: 12px;
   }
   .article-card {
+    width: 100%;
+    box-sizing: border-box;
     border-radius: var(--radius-lg);
   }
   .article-card .card__img-wrap {
@@ -2521,7 +2695,7 @@ img { max-width: 100%; display: block; }
     gap: 8px;
   }
   .card__title {
-    font-size: 0.95rem;
+    font-size: 0.94rem;
     line-height: 1.35;
   }
   .card__snippet {
@@ -2534,6 +2708,8 @@ img { max-width: 100%; display: block; }
 
   /* Instagram Reels Grid */
   .ig-media-grid {
+    width: 100%;
+    box-sizing: border-box;
     grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
@@ -2541,67 +2717,105 @@ img { max-width: 100%; display: block; }
     border-radius: var(--radius-md);
   }
   .ig-reel-caption {
-    font-size: 0.68rem;
-    max-height: 32px;
+    font-size: 0.66rem;
+    max-height: 30px;
     -webkit-line-clamp: 2;
   }
 
   /* Modals */
   .modal-backdrop {
-    padding: 10px;
+    padding: 8px;
   }
   .modal-card {
-    padding: 18px 14px;
+    padding: 16px 12px;
     border-radius: var(--radius-lg);
-    max-height: 88vh;
+    max-height: 90vh;
     gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
   .modal-title {
-    font-size: 1.05rem;
+    font-size: 1rem;
   }
   .modal-desc {
-    font-size: 0.78rem;
+    font-size: 0.76rem;
   }
   .geo-trigger-row {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
-    padding: 7px 10px;
+    padding: 7px 8px;
   }
   .geo-trigger-left {
     width: 100%;
     justify-content: space-between;
   }
   .geo-trigger-source {
-    font-size: 0.65rem;
+    font-size: 0.64rem;
     opacity: 0.8;
   }
 
-  /* AI Chatbot Floating Panel */
-  #ai-chat-toggle {
-    bottom: 14px;
-    right: 14px;
-    width: 44px;
-    height: 44px;
+  /* ===== FULL-SCREEN MOBILE AI CHATBOT DRAWER ===== */
+  .ai-bot-fab, #btn-ai-chat-toggle {
+    bottom: 16px;
+    right: 16px;
+    width: 48px;
+    height: 48px;
+    z-index: 9999;
   }
-  #ai-chat-panel {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
-    border-radius: 0;
-    z-index: 1000;
+  .ai-chat-drawer, #ai-chat-drawer {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    z-index: 100000 !important;
+    box-shadow: none !important;
+    display: flex;
+    flex-direction: column;
+    background: var(--clr-surface) !important;
   }
-  #ai-chat-panel .ai-chat-header {
-    padding: 14px 16px;
+  .ai-chat-drawer .ai-chat-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--clr-border);
+    flex-shrink: 0;
   }
-  #ai-chat-body {
-    max-height: calc(100dvh - 125px);
+  .ai-chat-drawer .ai-chat-title {
+    font-size: 0.88rem;
+  }
+  .ai-chat-drawer .ai-chat-sub {
+    font-size: 0.66rem;
+  }
+  .ai-chat-messages {
+    flex: 1;
+    overflow-y: auto;
     padding: 12px;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+  }
+  .ai-chat-footer {
+    flex-shrink: 0;
+    padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
+  }
+  .ai-chat-form, .ai-chat-input-form {
+    margin: 0 !important;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .ai-history-panel {
+    top: 55px;
+    border-radius: 0;
   }
 
-  /* Reel Theater */
+  /* Reel Theater Fullscreen Mobile */
   .reel-theater-card {
     flex-direction: column;
     width: 100vw;
@@ -2623,9 +2837,6 @@ img { max-width: 100%; display: block; }
 
 /* Extra Small Phones (<= 420px) */
 @media (max-width: 420px) {
-  .hero__stats {
-    grid-template-columns: 1fr;
-  }
   .ig-media-grid {
     grid-template-columns: 1fr;
   }
