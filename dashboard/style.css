@@ -2883,6 +2883,10 @@ img { max-width: 100%; display: block; }
    USER AUTHENTICATION & ROLE UI (God Mode vs Sandbox Mode)
    ============================================================ */
 
+/* ============================================================
+   USER AUTHENTICATION & PROFILE MENU (Clean SaaS Style)
+   ============================================================ */
+
 .navbar__auth {
   display: flex;
   align-items: center;
@@ -2893,56 +2897,64 @@ img { max-width: 100%; display: block; }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: linear-gradient(135deg, rgba(245, 197, 24, 0.15), rgba(99, 102, 241, 0.15));
+  background: var(--clr-surface);
   color: var(--clr-ink);
   border: 1px solid var(--clr-border);
-  padding: 6px 14px;
+  padding: 8px 16px;
   border-radius: var(--radius-pill);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--shadow-xs);
   transition: all var(--dur) var(--ease);
   white-space: nowrap;
 }
 
 .btn-auth-signin:hover {
-  background: linear-gradient(135deg, rgba(245, 197, 24, 0.28), rgba(99, 102, 241, 0.28));
   border-color: var(--clr-gold);
+  color: var(--clr-gold);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-auth-signin svg {
   color: var(--clr-gold);
 }
 
-/* User Profile Pill */
+/* User Profile Pill (Clean, single-line, aligned with navbar buttons) */
 .user-profile-wrapper {
   position: relative;
+  display: inline-flex;
+  align-items: center;
 }
 
 .user-profile-pill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--clr-surface-2);
+  background: var(--clr-surface);
   border: 1px solid var(--clr-border);
-  padding: 4px 12px 4px 5px;
+  padding: 4px 12px 4px 4px;
   border-radius: var(--radius-pill);
   color: var(--clr-ink);
   cursor: pointer;
+  box-shadow: var(--shadow-xs);
   transition: all var(--dur) var(--ease);
   font-family: inherit;
+  height: 36px;
 }
 
-.user-profile-pill:hover {
+.user-profile-pill:hover,
+.user-profile-wrapper.is-open .user-profile-pill {
   border-color: var(--clr-gold);
-  background: var(--clr-surface-3);
+  background: var(--clr-surface-2);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 .user-avatar {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: linear-gradient(135deg, #6366F1, #8B5CF6);
   color: #FFFFFF;
@@ -2950,59 +2962,31 @@ img { max-width: 100%; display: block; }
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 5px rgba(99, 102, 241, 0.35);
   flex-shrink: 0;
 }
 
-.user-info-text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  line-height: 1.15;
-}
-
 .user-name {
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.82rem;
+  font-weight: 600;
   color: var(--clr-ink);
-  max-width: 90px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Role Badges */
-.role-badge {
-  font-size: 0.62rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  line-height: 1;
-}
-
-.role-badge.god-mode {
-  background: linear-gradient(135deg, #F59E0B, #D97706);
-  color: #FFFFFF;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
-}
-
-.role-badge.sandbox-mode {
-  background: linear-gradient(135deg, #10B981, #059669);
-  color: #FFFFFF;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
-}
-
 .user-dropdown-arrow {
   color: var(--clr-ink-3);
   transition: transform var(--dur) var(--ease);
+  flex-shrink: 0;
 }
 
 .user-profile-wrapper.is-open .user-dropdown-arrow {
   transform: rotate(180deg);
+  color: var(--clr-gold);
 }
 
 /* User Profile Dropdown Menu */
@@ -3010,73 +2994,153 @@ img { max-width: 100%; display: block; }
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  min-width: 250px;
-  background: var(--clr-surface-elevated, var(--clr-surface));
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  min-width: 240px;
+  background: var(--clr-surface);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--clr-border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-  padding: 8px;
-  z-index: 1000;
-  animation: fadeInMenu 0.15s ease-out;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 6px;
+  z-index: 99999;
+  animation: fadeInMenu 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes fadeInMenu {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .user-dropdown-header {
-  padding: 8px 10px;
+  padding: 8px 10px 10px;
+}
+
+.user-dropdown-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-dropdown-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.user-dropdown-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
 }
 
 .user-dropdown-name {
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: var(--clr-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-dropdown-email {
   font-size: 0.72rem;
   color: var(--clr-ink-3);
-  margin-top: 2px;
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.user-dropdown-badge-wrap {
+  margin-top: 8px;
+}
+
+/* Role Badges inside dropdown */
+.role-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-block;
+  line-height: 1;
+}
+
+.role-badge.god-mode, .role-badge.admin {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.2));
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.role-badge.sandbox-mode, .role-badge.member {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.15));
+  color: #10B981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .user-dropdown-divider {
   height: 1px;
   background: var(--clr-border);
-  margin: 6px 0;
+  margin: 4px 0;
 }
 
 .user-dropdown-item {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   padding: 8px 10px;
   border: none;
   background: transparent;
   color: var(--clr-ink);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 500;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all var(--dur) var(--ease);
   text-align: left;
 }
 
+.user-dropdown-item svg {
+  color: var(--clr-ink-3);
+  flex-shrink: 0;
+  transition: color var(--dur) var(--ease);
+}
+
 .user-dropdown-item:hover {
-  background: var(--clr-surface-3);
+  background: var(--clr-surface-2);
+  color: var(--clr-gold);
+}
+
+.user-dropdown-item:hover svg {
+  color: var(--clr-gold);
 }
 
 .user-dropdown-item.danger {
   color: #EF4444;
 }
 
+.user-dropdown-item.danger svg {
+  color: #EF4444;
+}
+
 .user-dropdown-item.danger:hover {
   background: rgba(239, 68, 68, 0.12);
+  color: #EF4444;
+}
+
+.user-dropdown-item.danger:hover svg {
+  color: #EF4444;
 }
 
 /* Auth Modal Styles */

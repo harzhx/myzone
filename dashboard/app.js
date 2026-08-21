@@ -197,11 +197,11 @@ const btnUserProfile      = document.getElementById('btn-user-profile');
 const userAvatarInitials  = document.getElementById('user-avatar-initials');
 const userDisplayName     = document.getElementById('user-display-name');
 const userRoleBadge       = document.getElementById('user-role-badge');
-const userProfileDropdown = document.getElementById('user-profile-dropdown');
+const userProfileDropdown = document.getElementById('user-dropdown-menu');
+const dropdownUserAvatar  = document.getElementById('dropdown-user-avatar');
 const dropdownUserName    = document.getElementById('dropdown-user-name');
 const dropdownUserEmail   = document.getElementById('dropdown-user-email');
-const dropdownRoleTitle   = document.getElementById('dropdown-role-title');
-const dropdownRoleText    = document.getElementById('dropdown-role-text');
+const btnDropdownWebhooks = document.getElementById('btn-dropdown-webhooks');
 const btnSwitchAccount    = document.getElementById('btn-switch-account');
 const btnLogout           = document.getElementById('btn-logout');
 
@@ -2949,21 +2949,22 @@ function renderAuthUI() {
   if (state.auth.isAuthenticated && state.auth.user) {
     const user = state.auth.user;
     if (btnOpenAuth) btnOpenAuth.style.display = 'none';
-    if (userProfileWrapper) userProfileWrapper.style.display = 'block';
+    if (userProfileWrapper) userProfileWrapper.style.display = 'inline-flex';
 
     const displayName = user.name || user.email.split('@')[0];
     const initial = (displayName.charAt(0) || 'U').toUpperCase();
 
     if (userAvatarInitials) userAvatarInitials.textContent = initial;
+    if (dropdownUserAvatar) dropdownUserAvatar.textContent = initial;
     if (userDisplayName) userDisplayName.textContent = displayName;
 
     if (userRoleBadge) {
       if (user.isAdmin) {
-        userRoleBadge.className = 'role-badge god-mode';
+        userRoleBadge.className = 'role-badge admin';
         userRoleBadge.textContent = 'Admin';
         userRoleBadge.title = 'Administrator';
       } else {
-        userRoleBadge.className = 'role-badge sandbox-mode';
+        userRoleBadge.className = 'role-badge member';
         userRoleBadge.textContent = 'Member';
         userRoleBadge.title = 'Member Account';
       }
@@ -3079,18 +3080,34 @@ function initAuthSystem() {
   if (btnUserProfile && userProfileDropdown && userProfileWrapper) {
     btnUserProfile.addEventListener('click', (e) => {
       e.stopPropagation();
-      const isOpen = userProfileDropdown.style.display === 'block';
-      userProfileDropdown.style.display = isOpen ? 'none' : 'block';
-      userProfileWrapper.classList.toggle('is-open', !isOpen);
-      btnUserProfile.setAttribute('aria-expanded', String(!isOpen));
+      const isCurrentlyOpen = userProfileWrapper.classList.contains('is-open');
+      if (isCurrentlyOpen) {
+        userProfileWrapper.classList.remove('is-open');
+        userProfileDropdown.style.display = 'none';
+        btnUserProfile.setAttribute('aria-expanded', 'false');
+      } else {
+        userProfileWrapper.classList.add('is-open');
+        userProfileDropdown.style.display = 'block';
+        btnUserProfile.setAttribute('aria-expanded', 'true');
+      }
     });
 
     document.addEventListener('click', (e) => {
       if (!userProfileWrapper.contains(e.target)) {
-        userProfileDropdown.style.display = 'none';
         userProfileWrapper.classList.remove('is-open');
+        userProfileDropdown.style.display = 'none';
         btnUserProfile.setAttribute('aria-expanded', 'false');
       }
+    });
+  }
+
+  // Dropdown Settings / Webhooks
+  if (btnDropdownWebhooks) {
+    btnDropdownWebhooks.addEventListener('click', () => {
+      if (userProfileDropdown) userProfileDropdown.style.display = 'none';
+      if (userProfileWrapper) userProfileWrapper.classList.remove('is-open');
+      const modalBackdrop = document.getElementById('integration-modal');
+      if (modalBackdrop) modalBackdrop.style.display = 'flex';
     });
   }
 
