@@ -837,11 +837,52 @@ function renderMonthlyGymCalendar() {
   statGymGoal.textContent = `${monthCompletedCount}/${goal}`;
   if (gymStreakCount) gymStreakCount.textContent = state.widgets?.gym?.streak_weeks || 3;
 
+  const sessionSourceTag = document.querySelector('.session-source-tag');
+  const sessionStatusDot = document.querySelector('.live-dot-green');
+  const latestTrigger = (state.widgets?.gym?.triggers || [])[0];
   const latestSession = sessions[0];
-  if (latestSession) {
-    sessionStatusTxt.textContent = `Latest: ${latestSession.date === todayStr ? 'Today' : latestSession.date} · ${latestSession.enter_time || ''} – ${latestSession.exit_time || 'In Progress'} (${latestSession.duration || ''})`;
+
+  if (latestTrigger) {
+    const isToday = latestTrigger.date === todayStr;
+    const dayLabel = isToday ? 'Today' : (latestTrigger.date || 'Recent');
+    const timeStr = latestTrigger.time || (latestTrigger.display_time?.includes('·') ? latestTrigger.display_time.split('·')[1].trim() : '') || 'Recently';
+
+    if (latestTrigger.event === 'enter') {
+      sessionStatusTxt.textContent = `Latest: Entered ${dayLabel} at ${timeStr} · In Progress`;
+      if (sessionStatusDot) {
+        sessionStatusDot.style.background = 'var(--clr-green)';
+        sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-green)';
+      }
+    } else {
+      sessionStatusTxt.textContent = `Latest: Exited ${dayLabel} at ${timeStr} · Completed`;
+      if (sessionStatusDot) {
+        sessionStatusDot.style.background = 'var(--clr-gold)';
+        sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-gold)';
+      }
+    }
+  } else if (latestSession) {
+    const isToday = latestSession.date === todayStr;
+    const dayLabel = isToday ? 'Today' : (latestSession.date || 'Recent');
+
+    if (latestSession.status === 'in_progress' || !latestSession.exit_time || latestSession.exit_time === 'In progress...' || latestSession.exit_time === 'In Progress') {
+      sessionStatusTxt.textContent = `Latest: Entered ${dayLabel} at ${latestSession.enter_time || ''} · In Progress`;
+      if (sessionStatusDot) {
+        sessionStatusDot.style.background = 'var(--clr-green)';
+        sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-green)';
+      }
+    } else {
+      sessionStatusTxt.textContent = `Latest: Exited ${dayLabel} at ${latestSession.exit_time} (${latestSession.enter_time || ''} – ${latestSession.exit_time}${latestSession.duration ? ` · ${latestSession.duration}` : ''})`;
+      if (sessionStatusDot) {
+        sessionStatusDot.style.background = 'var(--clr-gold)';
+        sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-gold)';
+      }
+    }
   } else {
     sessionStatusTxt.textContent = 'Auto-tracking active · Waiting for phone geofence';
+  }
+
+  if (sessionSourceTag) {
+    sessionSourceTag.textContent = `📍 ${state.widgets?.gym?.geofence?.name || 'Bestrong Geofence'}`;
   }
 }
 
