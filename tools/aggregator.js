@@ -4,17 +4,20 @@
 
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { scrapeRundown } from './scraper_rundown.js';
 import { scrapeBensBites } from './scraper_bens_bites.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const TMP_DIR = path.join(ROOT, '.tmp');
+const TMP_DIR = process.env.VERCEL ? os.tmpdir() : path.join(ROOT, '.tmp');
 const STATE_FILE = path.join(TMP_DIR, 'articles.json');
 
 // Ensure .tmp exists
-if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+} catch (e) {}
 
 function loadState() {
   try {
@@ -22,13 +25,18 @@ function loadState() {
       return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
     }
   } catch (e) {
-    console.error('Could not read state file, starting fresh:', e.message);
+    console.warn('Could not read state file, starting fresh:', e.message);
   }
   return { last_fetched: null, articles: [] };
 }
 
 function saveState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  try {
+    if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('Could not save articles state cache:', e.message);
+  }
 }
 
 export async function aggregate() {

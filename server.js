@@ -9,6 +9,7 @@ import http from 'http';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { aggregate } from './tools/aggregator.js';
 
@@ -36,8 +37,9 @@ loadEnv();
 
 const PORT = process.env.PORT ?? 8000;
 const DASHBOARD_DIR = path.join(__dirname, 'dashboard');
-const STATE_FILE = path.join(__dirname, '.tmp', 'articles.json');
-const WIDGETS_FILE = path.join(__dirname, '.tmp', 'widgets.json');
+const TMP_DIR = process.env.VERCEL ? os.tmpdir() : path.join(__dirname, '.tmp');
+const STATE_FILE = path.join(TMP_DIR, 'articles.json');
+const WIDGETS_FILE = path.join(TMP_DIR, 'widgets.json');
 
 const MIME_TYPES = {
   '.html': 'text/html',
@@ -118,7 +120,7 @@ function serveFile(req, res, filePath, contentType) {
   }
 }
 
-function serveArticles(res) {
+async function serveArticles(res) {
   try {
     if (fs.existsSync(STATE_FILE)) {
       const data = fs.readFileSync(STATE_FILE, 'utf8');
@@ -129,6 +131,17 @@ function serveArticles(res) {
       });
       res.end(data);
     } else {
+      try {
+        await aggregate();
+        if (fs.existsSync(STATE_FILE)) {
+          const fresh = fs.readFileSync(STATE_FILE, 'utf8');
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(fresh);
+          return;
+        }
+      } catch (aggErr) {
+        console.warn('Live aggregation notice:', aggErr.message);
+      }
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ articles: [], last_fetched: null, sources: {} }));
     }
@@ -900,8 +913,8 @@ async function handleBotWebhookDispatch(req, res) {
 // MAIN HTTP SERVER & ROUTER
 // ============================================================
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
+export async function handleRequest(req, res) {
+  const url = new URL(req.url, `http://${req.headers?.host || `localhost:${PORT}`}`);
   const pathname = url.pathname;
 
   // Handle CORS preflight
@@ -958,20 +971,26 @@ const server = http.createServer(async (req, res) => {
   const ext = path.extname(filePath);
   const contentType = MIME_TYPES[ext] ?? 'text/plain';
   serveFile(req, res, filePath, contentType);
-});
+}
 
+const server = http.createServer(handleRequest);
 
-server.listen(PORT, () => {
-  console.log('\n🚀 My Zone Dashboard is running!');
-  console.log(`   Open: http://localhost:${PORT}`);
-  console.log(`   API:  http://localhost:${PORT}/api/articles`);
-  console.log(`   Widgets: http://localhost:${PORT}/api/widgets`);
-  console.log(`   Location Webhook: http://localhost:${PORT}/api/gym/location-event`);
-  console.log(`   Press Ctrl+C to stop\n`);
-});
+// Only listen locally when not running inside Vercel serverless environment
+if (!process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log('\n🚀 My Zone Dashboard is running!');
+    console.log(`   Open: http://localhost:${PORT}`);
+    console.log(`   API:  http://localhost:${PORT}/api/articles`);
+    console.log(`   Widgets: http://localhost:${PORT}/api/widgets`);
+    console.log(`   Location Webhook: http://localhost:${PORT}/api/gym/location-event`);
+    console.log(`   Press Ctrl+C to stop\n`);
+  });
 
-process.on('SIGINT', () => {
-  console.log('\n⛔ Server stopped.');
-  server.close();
-  process.exit(0);
-});
+  process.on('SIGINT', () => {
+    console.log('\n⛔ Server stopped.');
+    server.close();
+    process.exit(0);
+  });
+}
+
+export default handleRequest;
