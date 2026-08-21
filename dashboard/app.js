@@ -771,7 +771,47 @@ function initProjectEvents() {
 
 // ========================= MONTHLY GYM CALENDAR TRACKER =========================
 
+function updateGymNameInUI(gymName) {
+  const name = (gymName || state.widgets?.gym?.geofence?.name || 'Bestrong Gym').trim();
+
+  if (btnGeofenceCfg) {
+    btnGeofenceCfg.textContent = `📍 ${name}`;
+  }
+  const modalTitle = document.getElementById('geofence-modal-title');
+  if (modalTitle) {
+    modalTitle.textContent = `📍 ${name} Settings`;
+  }
+  const sessionSourceTag = document.querySelector('.session-source-tag');
+  if (sessionSourceTag) {
+    sessionSourceTag.textContent = `📍 ${name}`;
+  }
+  const gymSubtitle = document.getElementById('gym-widget-subtitle');
+  if (gymSubtitle) {
+    gymSubtitle.textContent = `Auto-logged via ${name} geofence`;
+  }
+  if (geoInputName && geoInputName !== document.activeElement) {
+    geoInputName.value = name;
+  }
+}
+
+function formatDurationBetween(startStr, endStr, dateStr) {
+  if (!startStr || !endStr) return null;
+  const dStr = dateStr || toLocalDateString(new Date());
+  const start = new Date(`${dStr} ${startStr}`);
+  const end = new Date(`${dStr} ${endStr}`);
+  const diffMs = end.getTime() - start.getTime();
+  if (isNaN(diffMs) || diffMs <= 0) return null;
+  const totalMins = Math.round(diffMs / 60000);
+  const hrs = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (hrs > 0) {
+    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+  }
+  return `${mins}m`;
+}
+
 function getSortedGymTriggers(gym) {
+  const gymName = gym?.geofence?.name || 'Bestrong Gym';
   let allTriggers = Array.isArray(gym?.triggers) ? [...gym.triggers] : [];
 
   // Extract exit and enter events from all session logs
@@ -788,7 +828,7 @@ function getSortedGymTriggers(gym) {
             date: sess.date,
             time: exitTimeStr,
             display_time: `${sess.date} · ${exitTimeStr}`,
-            detected_by: sess.detected_by || 'Bestrong Geofence (Automatic)'
+            detected_by: `${gymName} (Automatic)`
           });
         }
       }
@@ -803,7 +843,7 @@ function getSortedGymTriggers(gym) {
             date: sess.date,
             time: enterTimeStr,
             display_time: `${sess.date} · ${enterTimeStr}`,
-            detected_by: sess.detected_by || 'Bestrong Geofence (Automatic)'
+            detected_by: `${gymName} (Automatic)`
           });
         }
       }
@@ -884,9 +924,7 @@ function renderMonthlyGymCalendar() {
   }
 
   const gymName = state.widgets?.gym?.geofence?.name || "Bestrong Gym";
-  if (btnGeofenceCfg) {
-    btnGeofenceCfg.textContent = `📍 ${gymName}`;
-  }
+  updateGymNameInUI(gymName);
 
   const pct = Math.min(100, Math.round((monthCompletedCount / goal) * 100));
   gymProgressBar.style.width = `${pct}%`;
@@ -894,7 +932,6 @@ function renderMonthlyGymCalendar() {
   statGymGoal.textContent = `${monthCompletedCount}/${goal}`;
   if (gymStreakCount) gymStreakCount.textContent = state.widgets?.gym?.streak_weeks || 3;
 
-  const sessionSourceTag = document.querySelector('.session-source-tag');
   const sessionStatusDot = document.querySelector('.live-dot-green');
   
   // Calculate true latest trigger (Enter or Exit)
@@ -907,13 +944,35 @@ function renderMonthlyGymCalendar() {
     const timeStr = latestTrigger.time || (latestTrigger.display_time?.includes('·') ? latestTrigger.display_time.split('·')[1].trim() : '') || 'Recently';
 
     if (latestTrigger.event === 'enter') {
-      sessionStatusTxt.textContent = `Latest: Entered ${dayLabel} at ${timeStr} · In Progress`;
+      const nowTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const activeDur = isToday ? formatDurationBetween(timeStr, nowTimeStr, todayStr) : null;
+      
+      sessionStatusTxt.textContent = activeDur
+        ? `Latest: Entered ${dayLabel} at ${timeStr} · Active for ${activeDur} (In Progress)`
+        : `Latest: Entered ${dayLabel} at ${timeStr} · In Progress`;
+
       if (sessionStatusDot) {
         sessionStatusDot.style.background = 'var(--clr-green)';
         sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-green)';
       }
     } else {
-      sessionStatusTxt.textContent = `Latest: Exited ${dayLabel} at ${timeStr} · Completed`;
+      // Find matching entry event to compute session duration
+      const matchingEnter = sortedTriggers.find(t => t.event === 'enter' && (t.date === latestTrigger.date || (!t.date && isToday)));
+      let dur = matchingEnter ? formatDurationBetween(matchingEnter.time, timeStr, latestTrigger.date) : null;
+      
+      // Fallback to session duration if available
+      const matchingSession = sessions.find(s => s.date === latestTrigger.date);
+      if (!dur && matchingSession?.duration && matchingSession.duration !== 'Completed' && matchingSession.duration !== 'In progress...') {
+        dur = matchingSession.duration;
+      }
+
+      if (dur) {
+        const spanRange = matchingEnter?.time ? ` (${matchingEnter.time} – ${timeStr})` : '';
+        sessionStatusTxt.textContent = `Latest: Exited ${dayLabel} at ${timeStr} · Duration: ${dur}${spanRange}`;
+      } else {
+        sessionStatusTxt.textContent = `Latest: Exited ${dayLabel} at ${timeStr} · Completed`;
+      }
+
       if (sessionStatusDot) {
         sessionStatusDot.style.background = 'var(--clr-gold)';
         sessionStatusDot.style.boxShadow = '0 0 8px var(--clr-gold)';
@@ -921,10 +980,6 @@ function renderMonthlyGymCalendar() {
     }
   } else {
     sessionStatusTxt.textContent = 'Auto-tracking active · Waiting for phone geofence';
-  }
-
-  if (sessionSourceTag) {
-    sessionSourceTag.textContent = `📍 ${state.widgets?.gym?.geofence?.name || 'Bestrong Geofence'}`;
   }
 }
 
@@ -978,17 +1033,9 @@ function renderGeofenceModal() {
   const gymName = gym.geofence?.name || "Bestrong Gym";
   const goal = gym.goal_per_month || 20;
 
-  if (geoInputName) geoInputName.value = gymName;
+  updateGymNameInUI(gymName);
+
   if (geoInputGoal) geoInputGoal.value = goal;
-
-  const modalTitle = document.getElementById('geofence-modal-title');
-  if (modalTitle) {
-    modalTitle.textContent = `📍 ${gymName} Settings`;
-  }
-
-  if (btnGeofenceCfg) {
-    btnGeofenceCfg.textContent = `📍 ${gymName}`;
-  }
 
   const triggersListEl = document.getElementById('geo-triggers-list');
   const triggersCountEl = document.getElementById('geo-triggers-count');
@@ -1017,7 +1064,7 @@ function renderGeofenceModal() {
     const badgeCls = isEnter ? 'enter' : 'exit';
     const badgeText = isEnter ? '🟢 ENTER' : '🔴 EXIT';
     const timeDisplay = trig.display_time || (trig.time ? `${trig.date || 'Today'} · ${trig.time}` : (trig.timestamp ? new Date(trig.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Logged'));
-    const sourceDisplay = trig.detected_by || 'Bestrong Geofence (Automatic)';
+    const sourceDisplay = `${gymName} (Automatic)`;
 
     return `
       <div class="geo-trigger-row">
@@ -1308,11 +1355,19 @@ function init() {
   geofenceDoneBtn.addEventListener('click', () => {
     geofenceModal.style.display = 'none';
   });
+  geofenceModal.addEventListener('click', (e) => {
+    if (e.target === geofenceModal) {
+      geofenceModal.style.display = 'none';
+    }
+  });
   btnSaveGeofence.addEventListener('click', async () => {
+    const newName = (geoInputName.value || "Bestrong Gym").trim();
     state.widgets.gym = state.widgets.gym || {};
     state.widgets.gym.geofence = state.widgets.gym.geofence || {};
-    state.widgets.gym.geofence.name = (geoInputName.value || "Bestrong Gym").trim();
+    state.widgets.gym.geofence.name = newName;
     state.widgets.gym.goal_per_month = parseInt(geoInputGoal.value) || 20;
+
+    updateGymNameInUI(newName);
     saveToStorage();
     renderMonthlyGymCalendar();
     renderGeofenceModal();

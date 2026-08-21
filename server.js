@@ -382,6 +382,7 @@ async function handleLocationEvent(req, res) {
     };
     current.gym.triggers = [triggerRecord, ...current.gym.triggers.filter(t => t.id !== triggerRecord.id)].slice(0, 15);
 
+    const gymName = current.gym?.geofence?.name || 'Bestrong Gym';
     let activeSession = current.gym.sessions.find(s => s.date === dateStr && s.status === 'in_progress');
 
     if (eventType === 'enter') {
@@ -393,7 +394,7 @@ async function handleLocationEvent(req, res) {
           exit_time: null,
           duration: 'In progress...',
           status: 'in_progress',
-          detected_by: 'Bestrong Geofence (Automatic)',
+          detected_by: `${gymName} (Automatic)`,
           calories: 0,
           heart_rate_avg: '--'
         };
@@ -403,7 +404,21 @@ async function handleLocationEvent(req, res) {
       if (activeSession) {
         activeSession.exit_time = timeFormatted;
         activeSession.status = 'completed';
-        activeSession.duration = 'Completed';
+
+        let durText = 'Completed';
+        if (activeSession.enter_time) {
+          const startD = new Date(`${dateStr} ${activeSession.enter_time}`);
+          const endD = new Date(`${dateStr} ${timeFormatted}`);
+          const diffMs = endD.getTime() - startD.getTime();
+          if (!isNaN(diffMs) && diffMs > 0) {
+            const totalMins = Math.round(diffMs / 60000);
+            const hrs = Math.floor(totalMins / 60);
+            const mins = totalMins % 60;
+            durText = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+          }
+        }
+        activeSession.duration = durText;
+        activeSession.detected_by = `${gymName} (Automatic)`;
       } else {
         activeSession = {
           id: `s_${Date.now()}`,
@@ -412,7 +427,7 @@ async function handleLocationEvent(req, res) {
           exit_time: timeFormatted,
           duration: 'Logged via Geofence',
           status: 'completed',
-          detected_by: 'Bestrong Geofence (Automatic)',
+          detected_by: `${gymName} (Automatic)`,
           calories: 480,
           heart_rate_avg: '135 bpm'
         };
