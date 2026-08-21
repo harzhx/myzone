@@ -2240,27 +2240,399 @@ img { max-width: 100%; display: block; }
 
 
 
-/* Responsive */
-@media (max-width: 1024px) {
-  .widgets-grid { grid-template-columns: 1fr; }
-  .navbar { padding: 0 16px; gap: 10px; }
+/* ============================================================
+   RESPONSIVE DESIGN SYSTEM (Mobile, Tablet, Desktop)
+   ============================================================ */
 
-  .navbar__tabs { display: none; }
-  .page { padding: 0 16px 60px; }
-  .hero { padding: 24px; flex-direction: column; align-items: flex-start; gap: 20px; }
-  .hero__title { font-size: 1.75rem; }
-  .hero__stats { gap: 16px; flex-wrap: wrap; }
-  .stat-num { font-size: 1.8rem; }
-  .reel-theater-card { flex-direction: column; height: 90vh; max-height: 90vh; }
-  .reel-video-container { height: 50%; }
+/* Desktop & Wide Screens */
+@media (min-width: 1351px) {
+  .articles-grid { grid-template-columns: repeat(3, 1fr); }
+  .ig-media-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
+/* Intermediate Laptops / Desktops (1025px - 1350px) */
 @media (min-width: 1025px) and (max-width: 1350px) {
   .articles-grid { grid-template-columns: repeat(2, 1fr); }
   .ig-media-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
-@media (min-width: 1351px) {
-  .articles-grid { grid-template-columns: repeat(3, 1fr); }
-  .ig-media-grid { grid-template-columns: repeat(4, 1fr); }
+/* Tablets & Compact Screens (<= 1024px) */
+@media (max-width: 1024px) {
+  .widgets-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .navbar {
+    height: auto;
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .navbar__logo {
+    order: 1;
+  }
+  .navbar__right {
+    order: 2;
+  }
+  .navbar__tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    display: flex !important;
+    gap: 4px;
+    padding: 4px 6px;
+    box-sizing: border-box;
+  }
+  .navbar__tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tab {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: 0.76rem;
+    white-space: nowrap;
+  }
+  .page {
+    padding: 16px 16px 70px;
+  }
+  .hero {
+    padding: 22px 20px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+  }
+  .hero__title {
+    font-size: 1.6rem;
+  }
+  .hero__stats {
+    gap: 12px;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .articles-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .ig-media-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .reel-theater-card {
+    flex-direction: column;
+    height: 90vh;
+    max-height: 90vh;
+  }
+  .reel-video-container {
+    height: 50%;
+  }
+}
+
+/* Mobile Screens (<= 768px) */
+@media (max-width: 768px) {
+  html {
+    font-size: 15px;
+  }
+  .navbar {
+    padding: 8px 12px;
+  }
+  .logo-text {
+    font-size: 1rem;
+  }
+  .logo-mark {
+    width: 32px;
+    height: 32px;
+  }
+  .btn-theme-toggle {
+    padding: 5px 9px;
+    font-size: 0.72rem;
+  }
+  .btn-refresh {
+    width: 32px;
+    height: 32px;
+  }
+  .page {
+    padding: 12px 10px 80px;
+  }
+  .hero {
+    padding: 18px 14px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 18px;
+    gap: 14px;
+  }
+  .hero__title {
+    font-size: 1.35rem;
+    line-height: 1.25;
+  }
+  .hero__subtitle {
+    font-size: 0.8rem;
+  }
+  .hero__stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+  .hero-stat-card {
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+  }
+  .stat-num {
+    font-size: 1.35rem;
+  }
+  .stat-lbl {
+    font-size: 0.65rem;
+  }
+
+  /* Widgets */
+  .widgets-grid {
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .widget-card {
+    padding: 14px;
+    border-radius: var(--radius-lg);
+  }
+  .widget-title {
+    font-size: 0.95rem;
+  }
+  .widget-subtitle {
+    font-size: 0.72rem;
+  }
+  .btn-geofence-config {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Gym Calendar */
+  .gym-month-nav-row {
+    margin-bottom: 8px;
+  }
+  .gym-month-title {
+    font-size: 0.88rem;
+  }
+  .gym-week-labels {
+    font-size: 0.62rem;
+    gap: 3px;
+    margin-bottom: 4px;
+  }
+  .gym-month-grid {
+    gap: 3px;
+    margin-bottom: 10px;
+  }
+  .gym-month-cell {
+    min-height: 32px;
+    padding: 3px 1px;
+    border-radius: 6px;
+    gap: 2px;
+  }
+  .gym-month-date-num {
+    font-size: 0.66rem;
+  }
+  .gym-month-dot {
+    width: 5px;
+    height: 5px;
+  }
+  .gym-session-detail {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+  }
+  .session-badge-pill {
+    font-size: 0.7rem;
+    line-height: 1.3;
+    flex-wrap: wrap;
+  }
+  .session-source-tag {
+    font-size: 0.65rem;
+  }
+  .gym-stats-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.72rem;
+  }
+
+  /* Projects & Pipelines */
+  .project-status-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 3px;
+    gap: 3px;
+    margin-bottom: 12px;
+  }
+  .project-status-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .proj-tab {
+    padding: 5px 9px;
+    font-size: 0.68rem;
+    flex-shrink: 0;
+  }
+  .proj-card {
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    gap: 8px;
+  }
+  .proj-title {
+    font-size: 0.85rem;
+  }
+  .proj-desc {
+    font-size: 0.74rem;
+  }
+  .proj-meta {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.65rem;
+  }
+
+  /* Articles */
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    font-size: 1.15rem;
+  }
+  .section-sub {
+    font-size: 0.75rem;
+  }
+  .articles-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .article-card {
+    border-radius: var(--radius-lg);
+  }
+  .article-card .card__img-wrap {
+    height: 170px;
+  }
+  .article-card .card__body {
+    padding: 14px;
+    gap: 8px;
+  }
+  .card__title {
+    font-size: 0.95rem;
+    line-height: 1.35;
+  }
+  .card__snippet {
+    font-size: 0.78rem;
+    -webkit-line-clamp: 2;
+  }
+  .card__footer {
+    padding-top: 10px;
+  }
+
+  /* Instagram Reels Grid */
+  .ig-media-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .ig-reel-card {
+    border-radius: var(--radius-md);
+  }
+  .ig-reel-caption {
+    font-size: 0.68rem;
+    max-height: 32px;
+    -webkit-line-clamp: 2;
+  }
+
+  /* Modals */
+  .modal-backdrop {
+    padding: 10px;
+  }
+  .modal-card {
+    padding: 18px 14px;
+    border-radius: var(--radius-lg);
+    max-height: 88vh;
+    gap: 12px;
+  }
+  .modal-title {
+    font-size: 1.05rem;
+  }
+  .modal-desc {
+    font-size: 0.78rem;
+  }
+  .geo-trigger-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 7px 10px;
+  }
+  .geo-trigger-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .geo-trigger-source {
+    font-size: 0.65rem;
+    opacity: 0.8;
+  }
+
+  /* AI Chatbot Floating Panel */
+  #ai-chat-toggle {
+    bottom: 14px;
+    right: 14px;
+    width: 44px;
+    height: 44px;
+  }
+  #ai-chat-panel {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    z-index: 1000;
+  }
+  #ai-chat-panel .ai-chat-header {
+    padding: 14px 16px;
+  }
+  #ai-chat-body {
+    max-height: calc(100dvh - 125px);
+    padding: 12px;
+  }
+
+  /* Reel Theater */
+  .reel-theater-card {
+    flex-direction: column;
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    margin: 0;
+  }
+  .reel-video-container {
+    height: 52%;
+    width: 100%;
+  }
+  .reel-meta-container {
+    height: 48%;
+    width: 100%;
+    padding: 14px;
+  }
+}
+
+/* Extra Small Phones (<= 420px) */
+@media (max-width: 420px) {
+  .hero__stats {
+    grid-template-columns: 1fr;
+  }
+  .ig-media-grid {
+    grid-template-columns: 1fr;
+  }
+  .gym-month-cell {
+    min-height: 28px;
+  }
+  .gym-month-date-num {
+    font-size: 0.62rem;
+  }
 }
