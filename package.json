@@ -12,6 +12,7 @@
     "test:bens": "node tools/scraper_bens_bites.js"
   },
   "dependencies": {
+    "isomorphic-git": "^1.41.7",
     "xml2js": "^0.6.2"
   }
 }
