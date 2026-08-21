@@ -473,7 +473,7 @@ async function handleLocationEvent(req, res) {
 }
 
 // ============================================================
-// CONVERSATIONAL AI CHATBOT ENGINE (LLM + NATURAL LANGUAGE INTENT)
+// CONVERSATIONAL AI CHATBOT ENGINE (POWERED BY GEMINI)
 // ============================================================
 
 async function handleBotChatEndpoint(req, res) {
@@ -491,26 +491,36 @@ async function handleBotChatEndpoint(req, res) {
 
     let response = null;
 
-    // 1. Try OpenAI LLM if configured
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        response = await callOpenAiChat(message, history, context);
-      } catch (llmErr) {
-        console.warn('[OpenAI Chat Fallback Notice]:', llmErr.message);
-      }
-    }
-
-    // 2. Try Gemini LLM if configured
-    if (!response && process.env.GEMINI_API_KEY) {
+    // 1. Primary Engine: Google Gemini LLM
+    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) {
       try {
         response = await callGeminiChat(message, history, context);
       } catch (geminiErr) {
-        console.warn('[Gemini Chat Fallback Notice]:', geminiErr.message);
+        console.error('[Gemini Chat Error]:', geminiErr.message);
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          reply: `⚠️ Gemini connection issue: ${geminiErr.message}. Please check your connection or API key.`,
+          error: geminiErr.message
+        }));
+        return;
       }
     }
-
-    // 3. Built-in Natural Language Intent & Conversational Engine (Zero-dependency fallback)
-    if (!response) {
+    // 2. Secondary fallback: OpenAI LLM (if explicitly configured)
+    else if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim()) {
+      try {
+        response = await callOpenAiChat(message, history, context);
+      } catch (llmErr) {
+        console.error('[OpenAI Chat Error]:', llmErr.message);
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          reply: `⚠️ OpenAI connection issue: ${llmErr.message}.`,
+          error: llmErr.message
+        }));
+        return;
+      }
+    }
+    // 3. Fallback only if no API keys are provided at all
+    else {
       response = await generateSmartChatResponse(message, history, context);
     }
 
@@ -537,7 +547,7 @@ async function handleBotChatEndpoint(req, res) {
     console.error('[Bot Chat Error]:', e);
     res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
-      reply: "I encountered a minor issue processing that. How can I assist you with your projects, gym habits, or tech summaries?",
+      reply: `I encountered an unexpected error: ${e.message}. Please try again.`,
       error: e.message
     }));
   }
@@ -571,14 +581,14 @@ You MUST respond strictly in valid JSON format matching this schema:
     }
   }
 }
-If the user asks to perform an action (like adding a project, changing a project's status, logging a gym workout, or tweeting/posting to social media), set the "action" object accordingly. Otherwise set "action" to null.`;
+CRITICAL INSTRUCTION: Only generate an "action" when the user explicitly assigns or asks to perform a dashboard task (e.g., adding a project, changing project status, logging a workout, tweeting). For all regular discussions, questions, summaries, advice, or chitchat, set "action" to null.`;
 
   const messages = [
     { role: 'system', content: systemPrompt }
   ];
 
   if (Array.isArray(history)) {
-    history.slice(-4).forEach(h => {
+    history.slice(-6).forEach(h => {
       if (h.sender === 'user') messages.push({ role: 'user', content: h.text });
       else if (h.sender === 'bot') messages.push({ role: 'assistant', content: h.text });
     });
@@ -629,39 +639,59 @@ If the user asks to perform an action (like adding a project, changing a project
   });
 }
 
-// LLM: Google Gemini API
+// LLM: Google Gemini API (Dedicated Primary Model with Fallback Pipeline)
 async function callGeminiChat(userMsg, history, context) {
   const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-  if (!apiKey) throw new Error('GEMINI_API_KEY is empty');
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not configured in .env');
 
-  const systemInstruction = `You are Bhondu, an intelligent, friendly, and highly capable personal dashboard companion assistant.
-You talk like a helpful personal chief of staff. Never output robotic gibberish. Use clean markdown.
+  const systemInstruction = `You are Bhondu, an intelligent, friendly, ultra-capable personal dashboard companion AI for the user.
+You talk like a sharp, supportive personal chief of staff. Never output robotic gibberish. Write with clean, elegant markdown formatting (bolding, lists, highlights).
 
-Current Real-Time Dashboard Context:
+Current Real-Time Dashboard State:
 - Active Projects: ${JSON.stringify(context.projects || [])}
 - Monthly Gym Tracker: ${JSON.stringify(context.gym || {})}
 - Live AI News Headlines: ${JSON.stringify((context.articles || []).slice(0, 5))}
-- Current Time: ${new Date().toLocaleString()}
+- Current System Time: ${new Date().toLocaleString()}
 
 You MUST respond strictly in valid JSON format matching this schema:
 {
-  "reply": "Friendly, natural conversational markdown response",
+  "reply": "Conversational, insightful, direct markdown response to the user",
   "action": null | {
     "type": "add_project" | "move_project" | "delete_project" | "log_gym" | "tweet",
     "data": {
-      // For "add_project": { "name": string, "status": "in_progress"|"in_queue"|"finished", "category": string, "progress": number, "color": string }
-      // For "move_project": { "id": string, "name": string, "status": "in_progress"|"in_queue"|"finished" }
+      // For "add_project": { "name": string, "status": "in_progress" | "in_queue" | "finished", "category": string, "progress": number, "color": string }
+      // For "move_project": { "id": string, "name": string, "status": "in_progress" | "in_queue" | "finished" }
       // For "delete_project": { "id": string, "name": string }
       // For "log_gym": { "date": "YYYY-MM-DD" }
       // For "tweet": { "text": string }
     }
   }
 }
-If the user asks to perform an action (like adding a project, changing a project's status, logging a gym workout, or tweeting/posting to social media), set the "action" object accordingly. Otherwise set "action" to null.`;
 
-  const contents = [
-    { role: 'user', parts: [{ text: `${systemInstruction}\n\nUser Message: ${userMsg}` }] }
-  ];
+IMPORTANT RULES FOR ACTIONS ("Work when assigned"):
+1. ONLY return an "action" object when the user explicitly assigns or requests a specific task or change (e.g., adding a project, changing/moving a project status, deleting a project, logging a gym workout, posting a tweet).
+2. When performing an action, describe what you did clearly in "reply" and set "action" to the appropriate payload.
+3. For general chat, questions, brainstorming, project advice, news summaries, or casual remarks, "action" MUST BE null.
+4. Ensure the JSON is completely valid without extra leading or trailing text.`;
+
+  const contents = [];
+
+  // Append recent conversation history for rich continuity
+  if (Array.isArray(history) && history.length > 0) {
+    history.slice(-6).forEach(h => {
+      if (h.sender === 'user' && h.text) {
+        contents.push({ role: 'user', parts: [{ text: h.text }] });
+      } else if (h.sender === 'bot' && h.text) {
+        contents.push({ role: 'model', parts: [{ text: typeof h.text === 'string' ? h.text : JSON.stringify(h.text) }] });
+      }
+    });
+  }
+
+  // Current prompt
+  contents.push({
+    role: 'user',
+    parts: [{ text: `${systemInstruction}\n\nUser Request: ${userMsg}` }]
+  });
 
   const postBody = JSON.stringify({
     contents,
@@ -671,42 +701,56 @@ If the user asks to perform an action (like adding a project, changing a project
     }
   });
 
-  const options = {
-    hostname: 'generativelanguage.googleapis.com',
-    path: `/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-      'Content-Length': Buffer.byteLength(postBody)
-    },
-    timeout: 15000
-  };
+  const candidateModels = [
+    process.env.GEMINI_MODEL,
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-flash-latest'
+  ].filter(Boolean);
 
-  return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.error) return reject(new Error(parsed.error.message || 'Gemini API Error'));
-          let text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!text) return reject(new Error('Empty response from Gemini'));
-          // Strip any possible markdown fences
-          text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-          const result = JSON.parse(text);
-          resolve(result);
-        } catch (e) {
-          reject(e);
-        }
+  let lastError = null;
+
+  for (const model of candidateModels) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 35000);
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: postBody,
+        signal: controller.signal
       });
-    });
-    req.on('timeout', () => { req.destroy(); reject(new Error('Gemini request timed out')); });
-    req.on('error', reject);
-    req.write(postBody);
-    req.end();
-  });
+
+      clearTimeout(timeoutId);
+
+      const rawText = await res.text();
+      if (!res.ok) {
+        throw new Error(`Gemini API HTTP ${res.status} (${model}): ${rawText.slice(0, 200)}`);
+      }
+
+      const parsed = JSON.parse(rawText);
+      if (parsed.error) {
+        throw new Error(parsed.error.message || `Gemini error on ${model}`);
+      }
+
+      let text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error(`Empty candidates response from Gemini (${model})`);
+      }
+
+      // Clean any accidental markdown codeblock wrappers
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const jsonResult = JSON.parse(text);
+      return jsonResult; // Success
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Gemini Model Try Failed: ${model}]:`, err.message);
+    }
+  }
+
+  throw lastError || new Error('All Gemini model candidates failed');
 }
 
 // Built-in Natural Intent Determination & Conversational Engine

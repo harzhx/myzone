@@ -1620,13 +1620,20 @@ function renderAiChatMessages2() {
       `;
     }
 
+    const speakBtnHtml = (msg.sender === 'bot' && msg.text)
+      ? `<button type="button" class="ai-btn-speak" data-text="${escHtml(msg.text)}" title="Listen with voice diction" aria-label="Listen with voice diction"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>`
+      : '';
+
     msgEl.innerHTML = `
       <div class="ai-bubble">
         ${formatAiMessageText(msg.text)}
         ${optionsHtml}
         ${actionCardHtml}
       </div>
-      <span class="ai-msg-time">${msg.time || ''}</span>
+      <div class="ai-msg-meta">
+        <span class="ai-msg-time">${msg.time || ''}</span>
+        ${speakBtnHtml}
+      </div>
     `;
 
     aiChatMessages2.appendChild(msgEl);
@@ -1904,13 +1911,20 @@ function renderAiChatMessages() {
       `;
     }
 
+    const speakBtnHtml = (msg.sender === 'bot' && msg.text)
+      ? `<button type="button" class="ai-btn-speak" data-text="${escHtml(msg.text)}" title="Listen with voice diction" aria-label="Listen with voice diction"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>`
+      : '';
+
     msgEl.innerHTML = `
       <div class="ai-bubble">
         ${formatAiMessageText(msg.text)}
         ${optionsHtml}
         ${actionCardHtml}
       </div>
-      <span class="ai-msg-time">${msg.time || ''}</span>
+      <div class="ai-msg-meta">
+        <span class="ai-msg-time">${msg.time || ''}</span>
+        ${speakBtnHtml}
+      </div>
     `;
 
     aiChatMessages.appendChild(msgEl);
@@ -2266,9 +2280,16 @@ function initAiChatbot() {
     });
   }
 
-  // Message Options buttons click delegation
+  // Message Options & Speak buttons click delegation
   if (aiChatMessages) {
     aiChatMessages.addEventListener('click', (e) => {
+      const speakBtn = e.target.closest('.ai-btn-speak');
+      if (speakBtn) {
+        const text = speakBtn.dataset.text;
+        if (text) speakAiResponse(text, speakBtn);
+        return;
+      }
+
       const optBtn = e.target.closest('.ai-option-btn');
       if (optBtn) {
         const prompt = optBtn.dataset.prompt;
@@ -2281,6 +2302,13 @@ function initAiChatbot() {
 
   if (aiChatMessages2) {
     aiChatMessages2.addEventListener('click', (e) => {
+      const speakBtn = e.target.closest('.ai-btn-speak');
+      if (speakBtn) {
+        const text = speakBtn.dataset.text;
+        if (text) speakAiResponse(text, speakBtn);
+        return;
+      }
+
       const optBtn = e.target.closest('.ai-option-btn');
       if (optBtn) {
         const prompt = optBtn.dataset.prompt;
@@ -2295,6 +2323,13 @@ function initAiChatbot() {
   if (aiChatForm) {
     aiChatForm.addEventListener('submit', (e) => {
       e.preventDefault();
+      // If voice is currently listening, stop it first
+      if (isVoiceListening) {
+        clearVoiceSilenceTimer();
+        if (speechRecognition) {
+          try { speechRecognition.stop(); } catch (err) {}
+        }
+      }
       const text = aiChatInput.value.trim();
       if (!text) return;
       aiChatInput.value = '';
@@ -2304,12 +2339,149 @@ function initAiChatbot() {
 }
 
 // ============================================================
-// SPEECH-TO-TEXT (WEB SPEECH API VOICE INPUT)
+// SPEECH-TO-TEXT & VOICE DICTION (WEB SPEECH API)
 // ============================================================
 
 let speechRecognition = null;
 let isVoiceListening = false;
 let activeVoiceTarget = 1; // 1 or 2
+let voiceSilenceTimer = null;
+let voiceAccumulatedTranscript = '';
+const VOICE_SILENCE_TIMEOUT_MS = 3500; // 3.5s silence before auto-stopping recording
+
+// Voice Diction & Formatting Engine
+function formatVoiceDiction(rawText) {
+  if (!rawText) return '';
+  let str = rawText;
+
+  // 1. Spoken verbal punctuation to standard punctuation marks
+  const dictionMap = [
+    { regex: /\b(?:period|full\s*stop)\b/gi, rep: '.' },
+    { regex: /\b(?:comma)\b/gi, rep: ',' },
+    { regex: /\b(?:question\s*mark)\b/gi, rep: '?' },
+    { regex: /\b(?:exclamation\s*(?:point|mark))\b/gi, rep: '!' },
+    { regex: /\b(?:colon)\b/gi, rep: ':' },
+    { regex: /\b(?:semi\s*colon|semicolon)\b/gi, rep: ';' },
+    { regex: /\b(?:new\s*line|next\s*line)\b/gi, rep: '\n' },
+    { regex: /\b(?:open\s*quote|start\s*quote)\b/gi, rep: ' "' },
+    { regex: /\b(?:close\s*quote|end\s*quote)\b/gi, rep: '" ' },
+    { regex: /\b(?:hyphen|dash)\b/gi, rep: '-' },
+    { regex: /\b(?:ellipsis|dot\s*dot\s*dot)\b/gi, rep: '...' },
+  ];
+
+  dictionMap.forEach(rule => {
+    str = str.replace(rule.regex, rule.rep);
+  });
+
+  // 2. Fix spacing around punctuation: remove spaces before . , ! ? : ; and ensure space after
+  str = str.replace(/\s+([.,!?:;])/g, '$1');
+  str = str.replace(/([.,!?:;])(?=[^\s\d])/g, '$1 ');
+
+  // 3. Capitalize sentence starts (start of string or after . ! ? \n)
+  str = str.replace(/(^\s*|[.!?\n]\s+)([a-z])/g, (m, p1, p2) => p1 + p2.toUpperCase());
+
+  // 4. Common technical and dashboard acronyms
+  const acronyms = ['AI', 'API', 'UI', 'UX', 'RSS', 'URL', 'JSON', 'HTML', 'CSS', 'SQL', 'LLM', 'GPT', 'PR'];
+  acronyms.forEach(acr => {
+    const r = new RegExp(`\\b${acr}\\b`, 'gi');
+    str = str.replace(r, acr);
+  });
+
+  return str.trim();
+}
+
+function restartVoiceSilenceTimer() {
+  clearVoiceSilenceTimer();
+  voiceSilenceTimer = setTimeout(() => {
+    if (speechRecognition && isVoiceListening) {
+      console.log('[Speech Recognition]: Silence detected. Stopping voice recording gracefully.');
+      try {
+        speechRecognition.stop();
+      } catch (e) {}
+    }
+  }, VOICE_SILENCE_TIMEOUT_MS);
+}
+
+function clearVoiceSilenceTimer() {
+  if (voiceSilenceTimer) {
+    clearTimeout(voiceSilenceTimer);
+    voiceSilenceTimer = null;
+  }
+}
+
+// Text-to-Speech (TTS) Voice Synthesis for Bot Responses
+let activeSpeechUtterance = null;
+let activeSpeakBtn = null;
+
+function speakAiResponse(rawText, btnEl) {
+  if (!('speechSynthesis' in window)) {
+    showToast('Speech synthesis is not supported in this browser.');
+    return;
+  }
+
+  // Toggle stop if already speaking this element
+  if (window.speechSynthesis.speaking && activeSpeakBtn === btnEl) {
+    window.speechSynthesis.cancel();
+    resetSpeakButtonState();
+    return;
+  }
+
+  // Cancel any previous utterance
+  window.speechSynthesis.cancel();
+  resetSpeakButtonState();
+
+  // Strip code blocks and markdown symbols for natural speech diction
+  let cleanSpeech = rawText
+    .replace(/```[\s\S]*?```/g, 'Code block omitted.')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/(\*\*|\*|__|_)/g, '')
+    .replace(/^#+\s+/gm, '')
+    .replace(/^>\s*/gm, '')
+    .replace(/^[•\-\*]\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+    .trim();
+
+  if (!cleanSpeech) return;
+
+  const utterance = new SpeechSynthesisUtterance(cleanSpeech);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+  utterance.lang = navigator.language || 'en-US';
+
+  const voices = window.speechSynthesis.getVoices();
+  const naturalVoice = voices.find(v => (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Premium')) && v.lang.startsWith('en'))
+    || voices.find(v => v.lang.startsWith('en'));
+  if (naturalVoice) utterance.voice = naturalVoice;
+
+  activeSpeechUtterance = utterance;
+  activeSpeakBtn = btnEl;
+  if (btnEl) {
+    btnEl.classList.add('is-speaking');
+    btnEl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
+    btnEl.title = 'Stop listening';
+  }
+
+  utterance.onend = () => {
+    resetSpeakButtonState();
+  };
+
+  utterance.onerror = (e) => {
+    console.warn('[Speech Synthesis Error]:', e);
+    resetSpeakButtonState();
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+function resetSpeakButtonState() {
+  if (activeSpeakBtn) {
+    activeSpeakBtn.classList.remove('is-speaking');
+    activeSpeakBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
+    activeSpeakBtn.title = 'Listen with voice diction';
+    activeSpeakBtn = null;
+  }
+  activeSpeechUtterance = null;
+}
 
 function initVoiceRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2329,45 +2501,66 @@ function initVoiceRecognition() {
 
   try {
     speechRecognition = new SpeechRecognition();
-    speechRecognition.continuous = false;
+    speechRecognition.continuous = true;
     speechRecognition.interimResults = true;
-    speechRecognition.lang = 'en-US';
+    speechRecognition.lang = navigator.language || 'en-US';
+    speechRecognition.maxAlternatives = 1;
 
     speechRecognition.onstart = () => {
       isVoiceListening = true;
+      voiceAccumulatedTranscript = '';
+      restartVoiceSilenceTimer();
+
       if (activeVoiceTarget === 1) {
         if (btnAiVoice) btnAiVoice.classList.add('is-listening');
-        if (aiVoiceStatus) aiVoiceStatus.style.display = 'flex';
-        if (aiChatInput) aiChatInput.placeholder = 'Listening... (Speak your request)';
+        if (aiVoiceStatus) {
+          aiVoiceStatus.style.display = 'flex';
+          const statusText = aiVoiceStatus.querySelector('.voice-status-text');
+          if (statusText) statusText.textContent = 'Listening... Speak your request (Tap mic again to finish)';
+        }
+        if (aiChatInput) aiChatInput.placeholder = 'Listening... Speak now';
       } else {
         if (btnAiVoice2) btnAiVoice2.classList.add('is-listening');
-        if (aiVoiceStatus2) aiVoiceStatus2.style.display = 'flex';
-        if (aiChatInput2) aiChatInput2.placeholder = 'Listening... (Speak your request)';
+        if (aiVoiceStatus2) {
+          aiVoiceStatus2.style.display = 'flex';
+          const statusText = aiVoiceStatus2.querySelector('.voice-status-text');
+          if (statusText) statusText.textContent = 'Listening... Speak your request (Tap mic again to finish)';
+        }
+        if (aiChatInput2) aiChatInput2.placeholder = 'Listening... Speak now';
       }
     };
 
     speechRecognition.onresult = (event) => {
+      restartVoiceSilenceTimer();
+
       let interimTranscript = '';
-      let finalTranscript = '';
+      let finalChunk = '';
 
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+          finalChunk += ' ' + event.results[i][0].transcript;
         } else {
           interimTranscript += event.results[i][0].transcript;
         }
       }
 
-      const txt = finalTranscript || interimTranscript;
+      if (finalChunk.trim()) {
+        voiceAccumulatedTranscript = (voiceAccumulatedTranscript + ' ' + finalChunk).trim();
+      }
+
+      const combined = (voiceAccumulatedTranscript + ' ' + interimTranscript).trim();
+      const formatted = formatVoiceDiction(combined);
+
       if (activeVoiceTarget === 1 && aiChatInput) {
-        aiChatInput.value = txt;
+        aiChatInput.value = formatted;
       } else if (activeVoiceTarget === 2 && aiChatInput2) {
-        aiChatInput2.value = txt;
+        aiChatInput2.value = formatted;
       }
     };
 
     speechRecognition.onerror = (event) => {
       console.warn('[Speech Recognition Error]:', event.error);
+      clearVoiceSilenceTimer();
       stopVoiceRecognition();
       if (event.error === 'not-allowed') {
         showToast('Microphone permission denied.');
@@ -2378,30 +2571,33 @@ function initVoiceRecognition() {
 
     speechRecognition.onend = () => {
       const target = activeVoiceTarget;
+      clearVoiceSilenceTimer();
       stopVoiceRecognition();
-      if (target === 1) {
-        const spokenText = aiChatInput ? aiChatInput.value.trim() : '';
-        if (spokenText) {
-          aiChatInput.value = '';
-          processAiUserCommand(spokenText);
-        }
-      } else {
-        const spokenText = aiChatInput2 ? aiChatInput2.value.trim() : '';
-        if (spokenText) {
-          aiChatInput2.value = '';
-          processAiUserCommand2(spokenText);
-        }
+
+      // Clean and preserve dictated text in the active input box
+      const inputEl = (target === 1) ? aiChatInput : aiChatInput2;
+      if (inputEl) {
+        const cleaned = formatVoiceDiction(inputEl.value);
+        inputEl.value = cleaned;
+        inputEl.focus();
+        try {
+          inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+        } catch (e) {}
       }
+
+      // NOTE: We deliberately DO NOT auto-send here.
+      // The user reviews the formatted message and taps the Send button or presses Enter.
     };
 
     if (btnAiVoice) {
       btnAiVoice.addEventListener('click', () => {
         if (isVoiceListening) {
+          // User tapped to finish recording
+          clearVoiceSilenceTimer();
           speechRecognition.stop();
         } else {
           try {
             activeVoiceTarget = 1;
-            if (aiChatInput) aiChatInput.value = '';
             speechRecognition.start();
           } catch (e) { console.warn(e); }
         }
@@ -2411,11 +2607,12 @@ function initVoiceRecognition() {
     if (btnAiVoice2) {
       btnAiVoice2.addEventListener('click', () => {
         if (isVoiceListening) {
+          // User tapped to finish recording
+          clearVoiceSilenceTimer();
           speechRecognition.stop();
         } else {
           try {
             activeVoiceTarget = 2;
-            if (aiChatInput2) aiChatInput2.value = '';
             speechRecognition.start();
           } catch (e) { console.warn(e); }
         }
@@ -2424,17 +2621,17 @@ function initVoiceRecognition() {
 
     if (btnVoiceCancel) {
       btnVoiceCancel.addEventListener('click', () => {
+        clearVoiceSilenceTimer();
         if (speechRecognition && isVoiceListening) speechRecognition.abort();
         stopVoiceRecognition();
-        if (aiChatInput) aiChatInput.value = '';
       });
     }
 
     if (btnVoiceCancel2) {
       btnVoiceCancel2.addEventListener('click', () => {
+        clearVoiceSilenceTimer();
         if (speechRecognition && isVoiceListening) speechRecognition.abort();
         stopVoiceRecognition();
-        if (aiChatInput2) aiChatInput2.value = '';
       });
     }
   } catch (err) {
@@ -2444,6 +2641,7 @@ function initVoiceRecognition() {
 
 function stopVoiceRecognition() {
   isVoiceListening = false;
+  clearVoiceSilenceTimer();
   if (btnAiVoice) btnAiVoice.classList.remove('is-listening');
   if (btnAiVoice2) btnAiVoice2.classList.remove('is-listening');
   if (aiVoiceStatus) aiVoiceStatus.style.display = 'none';

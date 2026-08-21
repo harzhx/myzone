@@ -2032,14 +2032,45 @@ img { max-width: 100%; display: block; }
   background: #F8FAFC;
   color: #0B0C10;
 }
-.ai-msg-time {
-  font-size: 0.65rem;
-  color: var(--clr-ink-4);
+.ai-msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 4px;
   padding: 0 4px;
 }
-.ai-msg.user .ai-msg-time {
+.ai-msg.user .ai-msg-meta {
   align-self: flex-end;
+  justify-content: flex-end;
+}
+.ai-msg-time {
+  font-size: 0.65rem;
+  color: var(--clr-ink-4);
+}
+.ai-btn-speak {
+  background: transparent;
+  border: none;
+  color: var(--clr-ink-3);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--dur) var(--ease);
+  line-height: 1;
+}
+.ai-btn-speak:hover {
+  color: var(--clr-gold);
+  background: rgba(245, 197, 24, 0.12);
+}
+.ai-btn-speak.is-speaking {
+  color: var(--clr-gold);
+  animation: pulse-speak 1s infinite alternate;
+}
+@keyframes pulse-speak {
+  from { transform: scale(1); opacity: 0.8; }
+  to { transform: scale(1.15); opacity: 1; }
 }
 
 /* Typing indicator animation */
