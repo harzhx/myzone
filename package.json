@@ -1,0 +1,17 @@
+{
+  "name": "ai-pulse-dashboard",
+  "version": "1.0.0",
+  "description": "AI Newsletter Dashboard — B.L.A.S.T. Protocol",
+  "type": "module",
+  "scripts": {
+    "scrape": "node tools/aggregator.js",
+    "schedule": "node tools/scheduler.js",
+    "server": "node server.js",
+    "start": "node server.js",
+    "test:rundown": "node tools/scraper_rundown.js",
+    "test:bens": "node tools/scraper_bens_bites.js"
+  },
+  "dependencies": {
+    "xml2js": "^0.6.2"
+  }
+}

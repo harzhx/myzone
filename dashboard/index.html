@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Zone — Personal Hub & AI Digest</title>
+  <meta name="description" content="Personal workspace: AI newsletter digest, monthly automated gym geofencing tracker, customizable active project pipelines, and dynamic Instagram in-app reel feeds." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== TOP NAVBAR ===== -->
+  <header class="navbar" id="navbar">
+    <div class="navbar__logo">
+      <div class="logo-mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+          <path d="M7 12.5 L10.5 9 L14.5 14 L17.5 11" stroke="var(--clr-gold)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="logo-text">My Zone</span>
+    </div>
+
+    <!-- Center Navigation Tabs -->
+    <nav class="navbar__tabs" role="navigation" aria-label="Feed filters">
+      <button class="tab active" id="tab-all" data-filter="all" aria-pressed="true">All Intelligence</button>
+      <button class="tab" id="tab-rundown" data-filter="the_rundown_ai" aria-pressed="false">The AI Rundown</button>
+      <button class="tab" id="tab-bens" data-filter="bens_bites" aria-pressed="false">Ben's Bites</button>
+      <button class="tab" id="tab-saved" data-filter="saved" aria-pressed="false">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5 4a2 2 0 00-2 2v12l7-3 7 3V6a2 2 0 00-2-2H5z"/></svg>
+        Saved
+        <span class="tab-badge" id="tab-saved-count">0</span>
+      </button>
+    </nav>
+
+    <!-- Right Controls: Theme Toggle, Refresh, Live Status -->
+    <div class="navbar__right">
+      <!-- Dark/Light Mode Switcher -->
+      <button class="btn-theme-toggle" id="theme-toggle" aria-label="Toggle dark and light mode" title="Toggle theme">
+        <span class="theme-icon sun-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </span>
+        <span class="theme-icon moon-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </span>
+        <span class="theme-label" id="theme-label">Light</span>
+      </button>
+
+      <!-- Refresh Button -->
+      <button class="btn-refresh" id="refresh-btn" aria-label="Refresh articles and feeds">
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+        </svg>
+        <span id="refresh-label">Refresh</span>
+      </button>
+
+      <!-- Live Status Pill -->
+      <div class="status-pill" id="status-pill">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Live</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN CONTAINER ===== -->
+  <main class="page" id="main">
+
+    <!-- Hero Greeting & Stat Counters -->
+    <section class="hero">
+      <div class="hero__left">
+        <h1 class="hero__title">Good <span id="greeting-time">evening</span>, Builder 👋</h1>
+        <p class="hero__sub">Your personalized command center. Track your monthly fitness discipline, manage active build milestones, and explore native Instagram creator feeds with in-app reels.</p>
+      </div>
+      <div class="hero__stats">
+        <div class="stat-item">
+          <span class="stat-num" id="stat-total">40</span>
+          <span class="stat-label">AI Articles</span>
+        </div>
+        <div class="stat-divider" aria-hidden="true"></div>
+        <div class="stat-item">
+          <span class="stat-num" id="stat-gym-goal">12/20</span>
+          <span class="stat-label">Gym Days (Month)</span>
+        </div>
+        <div class="stat-divider" aria-hidden="true"></div>
+        <div class="stat-item">
+          <span class="stat-num" id="stat-projects-active">2</span>
+          <span class="stat-label">In Progress</span>
+        </div>
+        <div class="stat-divider" aria-hidden="true"></div>
+        <div class="stat-item">
+          <span class="stat-num" id="stat-saved">0</span>
+          <span class="stat-label">Saved</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PERSONAL PRODUCTIVITY BENTO ROW ===== -->
+    <section class="widgets-section" aria-label="Personal Productivity & Health">
+      <div class="widgets-grid">
+        
+        <!-- Widget 1: Monthly Gym Habit Calendar Tracker -->
+        <div class="widget-card widget-gym">
+          <div class="widget-card__header">
+            <div class="widget-title-wrap">
+              <span class="widget-icon">💪</span>
+              <div>
+                <h3 class="widget-title">Monthly Gym Tracker</h3>
+                <p class="widget-subtitle">Auto-logged via MacroDroid geofence</p>
+              </div>
+            </div>
+            <div class="widget-header-actions">
+              <button class="btn-geofence-config" id="btn-geofence-config" title="Configure Gym Location & Automation">
+                📍 Bestrong Gym
+              </button>
+            </div>
+          </div>
+
+          <!-- Monthly Calendar Navigation & Day Headers -->
+          <div class="gym-month-nav-row">
+            <span class="gym-month-title" id="gym-current-month-heading">August 2026</span>
+            <div class="gym-month-nav-btns">
+              <button class="btn-month-nav" id="btn-prev-month" aria-label="Previous Month">‹</button>
+              <button class="btn-month-nav" id="btn-next-month" aria-label="Next Month">›</button>
+            </div>
+          </div>
+
+          <div class="gym-week-labels">
+            <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+          </div>
+
+          <div class="gym-month-grid" id="gym-month-grid" role="grid" aria-label="Monthly Gym Calendar">
+            <!-- Rendered dynamically -->
+          </div>
+
+          <div class="gym-session-detail" id="gym-session-detail">
+            <div class="session-badge-pill">
+              <span class="live-dot-green"></span>
+              <span id="session-status-text">Latest: Today · 05:00 PM – 06:30 PM (1h 30m)</span>
+            </div>
+            <span class="session-source-tag">📍 Bestrong Geofence</span>
+          </div>
+
+          <div class="gym-footer">
+            <div class="gym-progress-bar-wrap">
+              <div class="gym-progress-bar" id="gym-progress-bar" style="width: 60%;"></div>
+            </div>
+            <div class="gym-stats-row">
+              <span class="gym-stats-text" id="gym-summary-text">12 of 20 monthly days completed (60%)</span>
+              <div class="gym-streak-tag">🔥 <span id="gym-streak-count">3</span> week streak</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget 2: Projects Taskbar & Custom Progress Tracker with Drag and Drop -->
+        <div class="widget-card widget-projects">
+          <div class="widget-card__header">
+            <div class="widget-title-wrap">
+              <span class="widget-icon">🚀</span>
+              <div>
+                <h3 class="widget-title">Projects & Pipelines</h3>
+                <p class="widget-subtitle">Custom categorized tracker · Drag to reorder</p>
+              </div>
+            </div>
+            <div class="projects-header-actions">
+              <button class="btn-new-project" id="btn-open-new-project">+ New Project</button>
+              <button class="btn-widget-action" id="btn-project-manage" title="Webhook Setup">⚙️</button>
+            </div>
+          </div>
+
+          <!-- Project Status Filter Tabs -->
+          <div class="project-status-tabs" id="project-status-tabs">
+            <button class="proj-tab active" data-pstatus="all">All <span class="proj-count-badge" id="cnt-all">3</span></button>
+            <button class="proj-tab" data-pstatus="in_progress">🔨 Work in Progress <span class="proj-count-badge" id="cnt-in_progress">2</span></button>
+            <button class="proj-tab" data-pstatus="in_queue">⏳ In Queue <span class="proj-count-badge" id="cnt-in_queue">1</span></button>
+            <button class="proj-tab" data-pstatus="finished">✅ Finished <span class="proj-count-badge" id="cnt-finished">1</span></button>
+          </div>
+
+          <div class="projects-list" id="projects-list">
+            <!-- Rendered dynamically with Drag and Drop -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===== ARTICLES & NEWSLETTER SECTION ===== -->
+    <section class="articles-section" id="articles-section">
+      <div class="error-bar" id="error-bar" style="display:none;" role="alert">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        <span id="error-text">Could not reach server — showing cached articles.</span>
+        <button id="error-close" aria-label="Dismiss">✕</button>
+      </div>
+
+      <div class="source-errors" id="source-errors" style="display:none;"></div>
+
+      <div class="section-header">
+        <h2 class="section-title" id="section-title">All Intelligence</h2>
+        <div class="new-pill" id="new-pill" style="display:none;">
+          <span class="new-dot" aria-hidden="true"></span>
+          <span id="new-pill-label">0 new</span>
+        </div>
+        <span class="last-updated" id="last-updated"></span>
+      </div>
+
+      <div class="articles-grid" id="articles-grid" role="list">
+        <div class="skel-card" aria-hidden="true"><div class="skel-img"></div><div class="skel-line w70"></div><div class="skel-line w100"></div><div class="skel-line w50"></div></div>
+        <div class="skel-card" aria-hidden="true"><div class="skel-img"></div><div class="skel-line w70"></div><div class="skel-line w100"></div><div class="skel-line w50"></div></div>
+        <div class="skel-card" aria-hidden="true"><div class="skel-img"></div><div class="skel-line w70"></div><div class="skel-line w100"></div><div class="skel-line w50"></div></div>
+      </div>
+
+      <div class="empty-state" id="empty-state" style="display:none;" role="status">
+        <div class="empty-icon" aria-hidden="true">📭</div>
+        <h3 class="empty-title" id="empty-title">Nothing here yet</h3>
+        <p class="empty-desc" id="empty-desc">Run the scraper to fetch fresh AI news.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== FLOATING AI BOT ASSISTANT TRIGGER ===== -->
+  <button class="ai-bot-fab" id="btn-ai-chat-toggle" aria-label="Open AI Assistant" title="Chat with My Zone AI Assistant">
+    <div class="ai-bot-glow"></div>
+    <div class="ai-bot-icon">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2a2 2 0 0 1 2 2v1h1a7 7 0 0 1 7 7v4a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5v-4a7 7 0 0 1 7-7h1V4a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="2"/>
+        <circle cx="9" cy="12" r="1.5" fill="currentColor"/>
+        <circle cx="15" cy="12" r="1.5" fill="currentColor"/>
+        <path d="M9 16c1 .67 2 .67 3 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <span class="ai-bot-badge">AI</span>
+  </button>
+
+  <!-- ===== EXPANDABLE AI CHATBOT DRAWER ===== -->
+  <div class="ai-chat-drawer" id="ai-chat-drawer" style="display:none;" role="dialog" aria-modal="false" aria-label="Bhondu AI Assistant">
+    <div class="ai-chat-header">
+      <div class="ai-chat-header-info">
+        <div class="ai-avatar-badge">
+          <span>🤖</span>
+          <span class="ai-online-dot"></span>
+        </div>
+        <div>
+          <h3 class="ai-chat-title">Bhondu</h3>
+          <p class="ai-chat-sub">Your Personal AI Assistant · Automations & Tasks</p>
+        </div>
+      </div>
+      <div class="ai-chat-header-actions">
+        <button class="ai-btn-icon" id="btn-ai-history" title="Chat History & Previous Conversations">🕒</button>
+        <button class="ai-btn-icon" id="btn-ai-new-chat" title="Start New Chat">➕</button>
+        <button class="ai-btn-icon" id="btn-open-webhook-cfg" title="Configure Make.com / Buffer Webhook">⚙️</button>
+        <button class="ai-btn-icon" id="btn-clear-ai-chat" title="Clear conversation">🗑️</button>
+        <button class="ai-btn-icon" id="btn-close-ai-chat" title="Close chat">✕</button>
+      </div>
+    </div>
+
+    <!-- Chat History Slide-Over Panel -->
+    <div class="ai-history-panel" id="ai-history-panel" style="display:none;">
+      <div class="ai-history-header">
+        <div class="ai-history-title">
+          <span>🕒</span>
+          <span>Previous Conversations</span>
+        </div>
+        <div class="ai-history-actions">
+          <button type="button" class="ai-btn-sm" id="btn-history-new-chat">+ New Chat</button>
+          <button type="button" class="ai-btn-icon" id="btn-close-history" title="Close history">✕</button>
+        </div>
+      </div>
+      <div class="ai-history-list" id="ai-history-list">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- Message Stream -->
+    <div class="ai-chat-messages" id="ai-chat-messages">
+      <!-- Rendered dynamically with user messages and bot responses -->
+    </div>
+
+    <!-- Voice Listening Status Bar -->
+    <div class="ai-voice-status" id="ai-voice-status" style="display:none;">
+      <div class="voice-wave-anim">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <span class="voice-status-text">Listening to your voice... Speak now</span>
+      <button type="button" class="btn-voice-cancel" id="btn-voice-cancel" title="Cancel voice input">✕</button>
+    </div>
+
+    <!-- Chat Input Form -->
+    <form class="ai-chat-input-form" id="ai-chat-form">
+      <button type="button" class="ai-btn-voice" id="btn-ai-voice" aria-label="Voice input (Speech to text)" title="Click to speak (Speech-to-Text)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+          <line x1="8" y1="22" x2="16" y2="22"/>
+        </svg>
+      </button>
+      <input type="text" id="ai-chat-input" placeholder="Ask AI or say 'Add project...', 'Tweet...', 'Log gym'..." autocomplete="off" required />
+      <button type="submit" class="ai-btn-send" id="btn-ai-send" aria-label="Send message">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </form>
+  </div>
+
+  <!-- ===== SECOND EXPANDABLE AI CHATBOT DRAWER (DUAL FLOATER) ===== -->
+  <div class="ai-chat-drawer secondary-drawer" id="ai-chat-drawer-2" style="display:none;" role="dialog" aria-modal="false" aria-label="Bhondu Secondary Chat">
+    <div class="ai-chat-header">
+      <div class="ai-chat-header-info">
+        <div class="ai-avatar-badge" style="background:linear-gradient(135deg, #6C63FF, #A855F7);">
+          <span>🤖</span>
+          <span class="ai-online-dot"></span>
+        </div>
+        <div>
+          <h3 class="ai-chat-title" id="ai-chat-title-2">Bhondu (Chat 2)</h3>
+          <p class="ai-chat-sub" id="ai-chat-sub-2">Side-by-side Companion</p>
+        </div>
+      </div>
+      <div class="ai-chat-header-actions">
+        <button class="ai-btn-icon" id="btn-clear-ai-chat-2" title="Clear conversation">🗑️</button>
+        <button class="ai-btn-icon" id="btn-close-ai-chat-2" title="Close second chat">✕</button>
+      </div>
+    </div>
+
+    <!-- Message Stream -->
+    <div class="ai-chat-messages" id="ai-chat-messages-2">
+      <!-- Rendered dynamically -->
+    </div>
+
+    <!-- Voice Listening Status Bar -->
+    <div class="ai-voice-status" id="ai-voice-status-2" style="display:none;">
+      <div class="voice-wave-anim">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <span class="voice-status-text">Listening to your voice... Speak now</span>
+      <button type="button" class="btn-voice-cancel" id="btn-voice-cancel-2" title="Cancel voice input">✕</button>
+    </div>
+
+    <!-- Chat Input Form -->
+    <form class="ai-chat-input-form" id="ai-chat-form-2">
+      <button type="button" class="ai-btn-voice" id="btn-ai-voice-2" aria-label="Voice input (Speech to text)" title="Click to speak (Speech-to-Text)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+          <line x1="8" y1="22" x2="16" y2="22"/>
+        </svg>
+      </button>
+      <input type="text" id="ai-chat-input-2" placeholder="Ask Bhondu in this side window..." autocomplete="off" required />
+      <button type="submit" class="ai-btn-send" id="btn-ai-send-2" aria-label="Send message">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </form>
+  </div>
+
+  <!-- ===== MAKE.COM / BUFFER WEBHOOK CONFIG MODAL ===== -->
+  <div class="modal-backdrop" id="webhook-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="webhook-modal-title">
+    <div class="modal-card" style="max-width:520px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="webhook-modal-title">⚡ Make.com / Buffer Webhook Integration</h3>
+        <button class="modal-close-btn" id="webhook-modal-close" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:0.84rem;color:var(--clr-ink-2);line-height:1.5;margin-bottom:14px;">
+          Connect your Make.com (Integromat), Buffer, Zapier, or custom Webhook URL. When you ask the AI assistant to tweet or publish posts, it dispatches the payload to this webhook scenario.
+        </p>
+        <div class="form-group">
+          <label class="form-label" for="webhook-url-input">Webhook URL</label>
+          <input type="url" class="form-input" id="webhook-url-input" placeholder="https://hook.eu1.make.com/..." />
+          <span style="font-size:0.72rem;color:var(--clr-ink-4);margin-top:4px;display:block;">Leave blank or set custom webhook URL. Tested and persists in localStorage.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel" id="btn-cancel-webhook">Cancel</button>
+        <button type="button" class="btn-save" id="btn-save-webhook">Save Webhook</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ===== CUSTOM PROJECT CREATION & EDIT MODAL ===== -->
+  <div class="modal-backdrop" id="project-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="project-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="project-modal-title">🚀 Create New Project</h3>
+        <button class="modal-close" id="project-modal-close" aria-label="Close modal">✕</button>
+      </div>
+      <form id="project-form" class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+        <input type="hidden" id="proj-edit-id" value="" />
+        
+        <label style="font-size:0.8rem;font-weight:600;display:flex;flex-direction:column;gap:4px;">
+          Project Name
+          <input type="text" id="proj-input-name" required placeholder="e.g. Supabase Cloud Sync" style="padding:8px 12px;border-radius:8px;border:1px solid var(--clr-border);background:var(--clr-surface-2);color:var(--clr-ink);" />
+        </label>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <label style="font-size:0.8rem;font-weight:600;display:flex;flex-direction:column;gap:4px;">
+            Status
+            <select id="proj-input-status" style="padding:8px 12px;border-radius:8px;border:1px solid var(--clr-border);background:var(--clr-surface-2);color:var(--clr-ink);">
+              <option value="in_progress">🔨 Work in Progress</option>
+              <option value="in_queue">⏳ To Be Done / In Queue</option>
+              <option value="finished">✅ Finished</option>
+            </select>
+          </label>
+
+          <label style="font-size:0.8rem;font-weight:600;display:flex;flex-direction:column;gap:4px;">
+            Category / Tag
+            <input type="text" id="proj-input-category" placeholder="e.g. Frontend, AI, Database" style="padding:8px 12px;border-radius:8px;border:1px solid var(--clr-border);background:var(--clr-surface-2);color:var(--clr-ink);" />
+          </label>
+        </div>
+
+        <label style="font-size:0.8rem;font-weight:600;display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;justify-content:space-between;">
+            <span>Progress: <strong id="proj-val-label">50%</strong></span>
+          </div>
+          <input type="range" id="proj-input-progress" min="0" max="100" value="50" style="accent-color:var(--clr-gold);cursor:pointer;" />
+        </label>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <label style="font-size:0.8rem;font-weight:600;display:flex;flex-direction:column;gap:4px;">
+            Tasks info (Optional)
+            <input type="text" id="proj-input-tasks" placeholder="e.g. 5/8 tasks" style="padding:8px 12px;border-radius:8px;border:1px solid var(--clr-border);background:var(--clr-surface-2);color:var(--clr-ink);" />
+          </label>
+
+          <label style="font-size:0.8rem;font-weight:600;display:flex;flex-direction:column;gap:4px;">
+            Due Date (Optional)
+            <input type="text" id="proj-input-due" placeholder="e.g. Aug 28" style="padding:8px 12px;border-radius:8px;border:1px solid var(--clr-border);background:var(--clr-surface-2);color:var(--clr-ink);" />
+          </label>
+        </div>
+
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px;">
+          <button type="button" class="btn-modal-cancel" id="btn-cancel-project" style="padding:8px 18px;border-radius:var(--radius-pill);border:1px solid var(--clr-border);background:var(--clr-surface-2);color:var(--clr-ink);font-weight:600;font-size:0.82rem;">Cancel</button>
+          <button type="submit" class="btn-primary" id="btn-save-project" style="padding:8px 22px;">Save Project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== GEOFENCE & PHONE AUTOMATION SETUP MODAL ===== -->
+  <div class="modal-backdrop" id="geofence-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="geofence-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="geofence-modal-title">📍 Bestrong Gym Geofencing Setup</h3>
+        <button class="modal-close" id="geofence-modal-close" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">MacroDroid on your Android phone automatically pings this endpoint when you step inside <strong>Bestrong Gym</strong>, lighting up the monthly calendar dots with your exact entry and exit times.</p>
+        
+        <div class="integration-item">
+          <div class="integration-badge">🤖 MacroDroid Android Webhook</div>
+          <pre class="code-box"><code>POST http://192.168.1.10:8000/api/gym/location-event
+Content-Type: application/json
+
+{"event": "enter"}</code></pre>
+        </div>
+
+        <div class="integration-item">
+          <div class="integration-badge">📍 Current Geofence Configuration</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+            <label style="font-size:0.75rem;font-weight:600;">Gym Name:
+              <input type="text" id="geo-input-name" class="geo-input" value="Bestrong Gym" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--clr-border);background:var(--clr-surface-3);color:var(--clr-ink);" />
+            </label>
+            <label style="font-size:0.75rem;font-weight:600;">Monthly Goal (Days):
+              <input type="number" id="geo-input-goal" class="geo-input" value="20" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--clr-border);background:var(--clr-surface-3);color:var(--clr-ink);" />
+            </label>
+          </div>
+          <button class="btn-primary" id="btn-save-geofence" style="margin-top:10px;padding:6px 16px;font-size:0.78rem;">Save Settings</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" id="geofence-modal-done">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== WEBHOOK & INTEGRATION MODAL ===== -->
+  <div class="modal-backdrop" id="integration-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-title">🔌 Webhooks & Data Personalization</h3>
+        <button class="modal-close" id="modal-close" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Connect real-time webhooks or automated data sources to feed your gym habit tracker and project progress taskbars directly into <code>My Zone</code>.</p>
+        
+        <div class="integration-item">
+          <div class="integration-badge">💪 Gym Location Event Webhook</div>
+          <pre class="code-box"><code>POST /api/gym/location-event
+Content-Type: application/json
+
+{
+  "event": "enter",
+  "timestamp": "2026-08-19T17:00:00Z"
+}</code></pre>
+        </div>
+
+        <div class="integration-item">
+          <div class="integration-badge">🚀 Project Progress (GitHub / Linear / Jira)</div>
+          <pre class="code-box"><code>POST /api/widgets
+Content-Type: application/json
+
+{
+  "projects": [
+    { "name": "My Zone Dashboard", "progress": 95, "status": "in_progress" }
+  ]
+}</code></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" id="modal-done-btn">Got it!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Environment Variables & API Keys (CRITICAL: Never commit secrets)
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# Temporary runtime data & caching
+.tmp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System & OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# IDE & Editor folders
+.vscode/
+.idea/
+.agents/
+*.swp
+*.swo
