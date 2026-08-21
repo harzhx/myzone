@@ -553,6 +553,91 @@ async function handleBotChatEndpoint(req, res) {
   }
 }
 
+// Audio Transcription Endpoint (for Firefox and cross-browser audio voice recognition via Gemini)
+async function handleAudioTranscribeEndpoint(req, res) {
+  try {
+    const payload = await parseRequestBody(req);
+    const audioBase64 = (payload.audio || '').trim();
+    const mimeType = (payload.mimeType || 'audio/webm').split(';')[0].trim();
+
+    if (!audioBase64) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Audio data is required.' }));
+      return;
+    }
+
+    const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+    if (!apiKey) {
+      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'GEMINI_API_KEY is not configured.' }));
+      return;
+    }
+
+    const postBody = JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType || 'audio/webm',
+                data: audioBase64
+              }
+            },
+            {
+              text: 'Transcribe the spoken audio words accurately into text. Return ONLY the transcribed text without any extra commentary, quotes, or markdown codeblocks.'
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 250
+      }
+    });
+
+    const candidateModels = [
+      'gemini-3.5-flash-lite',
+      'gemini-flash-lite-latest',
+      'gemini-3.6-flash'
+    ];
+
+    let transcribedText = '';
+
+    for (const model of candidateModels) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: postBody,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        transcribedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (transcribedText) break;
+      } catch (err) {
+        console.warn(`[Audio Transcribe Error on ${model}]:`, err.message);
+      }
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache'
+    });
+    res.end(JSON.stringify({ text: transcribedText.trim() }));
+  } catch (e) {
+    console.error('[Audio Transcribe Endpoint Error]:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
 // LLM: OpenAI Chat Completions
 async function callOpenAiChat(userMsg, history, context) {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -1245,6 +1330,10 @@ export async function handleRequest(req, res) {
 
   if (pathname === '/api/bot/chat' && req.method === 'POST') {
     return handleBotChatEndpoint(req, res);
+  }
+
+  if (pathname === '/api/bot/transcribe' && req.method === 'POST') {
+    return handleAudioTranscribeEndpoint(req, res);
   }
 
   if (pathname === '/api/bot/dispatch-webhook' && req.method === 'POST') {

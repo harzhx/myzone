@@ -8,6 +8,7 @@ const API_WIDGETS  = '/api/widgets';
 const API_GYM_LOC  = '/api/gym/location-event';
 const API_BOT_CHAT = '/api/bot/chat';
 const API_BOT_DISPATCH = '/api/bot/dispatch-webhook';
+const API_BOT_TRANSCRIBE = '/api/bot/transcribe';
 
 const LS_SAVED_IDS = 'my_zone_saved_ids';
 const LS_ARTICLES  = 'my_zone_articles';
@@ -2483,40 +2484,57 @@ function resetSpeakButtonState() {
   activeSpeechUtterance = null;
 }
 
-function initVoiceRecognition() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    console.info('[Speech Recognition]: Web Speech API is not supported in this browser environment.');
-    [btnAiVoice, btnAiVoice2].forEach(btn => {
-      if (btn) {
-        btn.title = 'Voice recognition not supported in this browser';
-        btn.style.opacity = '0.5';
-        btn.addEventListener('click', () => {
-          showToast('Voice input is not supported in this browser environment.');
-        });
-      }
-    });
-    return;
-  }
+// Cross-Browser MediaRecorder Fallback (for Firefox & Safari)
+let mediaRecorderInstance = null;
+let mediaRecorderAudioChunks = [];
+let mediaStreamInstance = null;
+let audioContextInstance = null;
+let audioAnalyserInstance = null;
+let soundCheckInterval = null;
+let lastSoundTimestamp = 0;
+let isUsingMediaRecorderFallback = false;
 
+async function startMediaRecorderVoice(target) {
   try {
-    speechRecognition = new SpeechRecognition();
-    speechRecognition.continuous = true;
-    speechRecognition.interimResults = true;
-    speechRecognition.lang = navigator.language || 'en-US';
-    speechRecognition.maxAlternatives = 1;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showToast('Microphone access is not supported on this device/browser.');
+      return;
+    }
 
-    speechRecognition.onstart = () => {
+    activeVoiceTarget = target;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaStreamInstance = stream;
+
+    // Determine supported mime type in Firefox / Safari / Chrome
+    let mimeType = '';
+    if (typeof MediaRecorder !== 'undefined') {
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+      else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+      else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) mimeType = 'audio/ogg;codecs=opus';
+      else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+      else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+    }
+
+    mediaRecorderAudioChunks = [];
+    mediaRecorderInstance = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+    mediaRecorderInstance.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        mediaRecorderAudioChunks.push(e.data);
+      }
+    };
+
+    mediaRecorderInstance.onstart = () => {
       isVoiceListening = true;
-      voiceAccumulatedTranscript = '';
-      restartVoiceSilenceTimer();
+      isUsingMediaRecorderFallback = true;
+      lastSoundTimestamp = Date.now();
 
       if (activeVoiceTarget === 1) {
         if (btnAiVoice) btnAiVoice.classList.add('is-listening');
         if (aiVoiceStatus) {
           aiVoiceStatus.style.display = 'flex';
           const statusText = aiVoiceStatus.querySelector('.voice-status-text');
-          if (statusText) statusText.textContent = 'Listening... Speak your request (Tap mic again to finish)';
+          if (statusText) statusText.textContent = 'Listening to microphone... (Tap mic when finished)';
         }
         if (aiChatInput) aiChatInput.placeholder = 'Listening... Speak now';
       } else {
@@ -2524,123 +2542,298 @@ function initVoiceRecognition() {
         if (aiVoiceStatus2) {
           aiVoiceStatus2.style.display = 'flex';
           const statusText = aiVoiceStatus2.querySelector('.voice-status-text');
-          if (statusText) statusText.textContent = 'Listening... Speak your request (Tap mic again to finish)';
+          if (statusText) statusText.textContent = 'Listening to microphone... (Tap mic when finished)';
         }
         if (aiChatInput2) aiChatInput2.placeholder = 'Listening... Speak now';
       }
-    };
 
-    speechRecognition.onresult = (event) => {
-      restartVoiceSilenceTimer();
+      // Real-time audio volume analyzer for automated silence detection in Firefox
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          audioContextInstance = new AudioCtx();
+          const source = audioContextInstance.createMediaStreamSource(stream);
+          audioAnalyserInstance = audioContextInstance.createAnalyser();
+          audioAnalyserInstance.fftSize = 256;
+          source.connect(audioAnalyserInstance);
 
-      let interimTranscript = '';
-      let finalChunk = '';
+          const dataArray = new Uint8Array(audioAnalyserInstance.frequencyBinCount);
+          soundCheckInterval = setInterval(() => {
+            if (!isVoiceListening) return;
+            audioAnalyserInstance.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+            const avg = sum / dataArray.length;
 
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalChunk += ' ' + event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
+            if (avg > 15) {
+              lastSoundTimestamp = Date.now();
+            } else if (Date.now() - lastSoundTimestamp > 3800) {
+              // 3.8s silence detected
+              console.log('[MediaRecorder]: Silence timeout detected. Stopping recording.');
+              stopMediaRecorderVoice();
+            }
+          }, 200);
         }
-      }
-
-      if (finalChunk.trim()) {
-        voiceAccumulatedTranscript = (voiceAccumulatedTranscript + ' ' + finalChunk).trim();
-      }
-
-      const combined = (voiceAccumulatedTranscript + ' ' + interimTranscript).trim();
-      const formatted = formatVoiceDiction(combined);
-
-      if (activeVoiceTarget === 1 && aiChatInput) {
-        aiChatInput.value = formatted;
-      } else if (activeVoiceTarget === 2 && aiChatInput2) {
-        aiChatInput2.value = formatted;
+      } catch (e) {
+        console.warn('Audio volume analyser notice:', e);
       }
     };
 
-    speechRecognition.onerror = (event) => {
-      console.warn('[Speech Recognition Error]:', event.error);
-      clearVoiceSilenceTimer();
+    mediaRecorderInstance.onstop = async () => {
       stopVoiceRecognition();
-      if (event.error === 'not-allowed') {
-        showToast('Microphone permission denied.');
-      } else if (event.error !== 'no-speech') {
-        showToast(`Voice notice: ${event.error}`);
+      if (soundCheckInterval) { clearInterval(soundCheckInterval); soundCheckInterval = null; }
+      if (audioContextInstance) { try { audioContextInstance.close(); } catch(e){} audioContextInstance = null; }
+      if (mediaStreamInstance) {
+        mediaStreamInstance.getTracks().forEach(track => track.stop());
+        mediaStreamInstance = null;
+      }
+
+      if (mediaRecorderAudioChunks.length === 0) return;
+
+      const audioBlob = new Blob(mediaRecorderAudioChunks, { type: mediaRecorderInstance.mimeType || 'audio/webm' });
+      mediaRecorderAudioChunks = [];
+
+      const inputEl = (activeVoiceTarget === 1) ? aiChatInput : aiChatInput2;
+      if (inputEl) inputEl.placeholder = 'Transcribing voice via Gemini...';
+
+      try {
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64Data = (reader.result || '').split(',')[1];
+          if (!base64Data) {
+            if (inputEl) inputEl.placeholder = (activeVoiceTarget === 1) ? "Ask AI or say 'Add project...', 'Tweet...', 'Log gym'..." : "Ask Bhondu in this side window...";
+            return;
+          }
+
+          const transRes = await fetch(API_BOT_TRANSCRIBE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio: base64Data, mimeType: audioBlob.type })
+          });
+
+          const transData = await transRes.json();
+          if (transData.text && inputEl) {
+            const formatted = formatVoiceDiction(transData.text);
+            inputEl.value = formatted;
+            inputEl.focus();
+            try { inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length); } catch(e){}
+          }
+          if (inputEl) inputEl.placeholder = (activeVoiceTarget === 1) ? "Ask AI or say 'Add project...', 'Tweet...', 'Log gym'..." : "Ask Bhondu in this side window...";
+        };
+      } catch (err) {
+        console.error('Transcription error:', err);
+        showToast('Voice transcription notice: ' + err.message);
+        if (inputEl) inputEl.placeholder = (activeVoiceTarget === 1) ? "Ask AI or say 'Add project...', 'Tweet...', 'Log gym'..." : "Ask Bhondu in this side window...";
       }
     };
 
-    speechRecognition.onend = () => {
-      const target = activeVoiceTarget;
-      clearVoiceSilenceTimer();
-      stopVoiceRecognition();
+    mediaRecorderInstance.start(250);
+  } catch (err) {
+    console.error('Microphone permission error:', err);
+    stopVoiceRecognition();
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      showToast('Microphone permission was denied. Please allow mic access in Firefox.');
+    } else {
+      showToast(`Microphone notice: ${err.message}`);
+    }
+  }
+}
 
-      // Clean and preserve dictated text in the active input box
-      const inputEl = (target === 1) ? aiChatInput : aiChatInput2;
-      if (inputEl) {
-        const cleaned = formatVoiceDiction(inputEl.value);
-        inputEl.value = cleaned;
-        inputEl.focus();
-        try {
-          inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
-        } catch (e) {}
-      }
+function stopMediaRecorderVoice(cancelled = false) {
+  if (cancelled) {
+    mediaRecorderAudioChunks = [];
+  }
+  if (mediaRecorderInstance && mediaRecorderInstance.state !== 'inactive') {
+    try {
+      mediaRecorderInstance.stop();
+    } catch (e) {}
+  }
+  isMediaRecorderListening = false;
+  isVoiceListening = false;
+  isUsingMediaRecorderFallback = false;
+}
 
-      // NOTE: We deliberately DO NOT auto-send here.
-      // The user reviews the formatted message and taps the Send button or presses Enter.
-    };
+function initVoiceRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    if (btnAiVoice) {
-      btnAiVoice.addEventListener('click', () => {
-        if (isVoiceListening) {
-          // User tapped to finish recording
+  if (SpeechRecognition) {
+    try {
+      speechRecognition = new SpeechRecognition();
+      speechRecognition.continuous = true;
+      speechRecognition.interimResults = true;
+      speechRecognition.lang = navigator.language || 'en-US';
+      speechRecognition.maxAlternatives = 1;
+
+      speechRecognition.onstart = () => {
+        isVoiceListening = true;
+        isUsingMediaRecorderFallback = false;
+        voiceAccumulatedTranscript = '';
+        restartVoiceSilenceTimer();
+
+        if (activeVoiceTarget === 1) {
+          if (btnAiVoice) btnAiVoice.classList.add('is-listening');
+          if (aiVoiceStatus) {
+            aiVoiceStatus.style.display = 'flex';
+            const statusText = aiVoiceStatus.querySelector('.voice-status-text');
+            if (statusText) statusText.textContent = 'Listening... Speak your request (Tap mic again to finish)';
+          }
+          if (aiChatInput) aiChatInput.placeholder = 'Listening... Speak now';
+        } else {
+          if (btnAiVoice2) btnAiVoice2.classList.add('is-listening');
+          if (aiVoiceStatus2) {
+            aiVoiceStatus2.style.display = 'flex';
+            const statusText = aiVoiceStatus2.querySelector('.voice-status-text');
+            if (statusText) statusText.textContent = 'Listening... Speak your request (Tap mic again to finish)';
+          }
+          if (aiChatInput2) aiChatInput2.placeholder = 'Listening... Speak now';
+        }
+      };
+
+      speechRecognition.onresult = (event) => {
+        restartVoiceSilenceTimer();
+
+        let interimTranscript = '';
+        let finalChunk = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalChunk += ' ' + event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        if (finalChunk.trim()) {
+          voiceAccumulatedTranscript = (voiceAccumulatedTranscript + ' ' + finalChunk).trim();
+        }
+
+        const combined = (voiceAccumulatedTranscript + ' ' + interimTranscript).trim();
+        const formatted = formatVoiceDiction(combined);
+
+        if (activeVoiceTarget === 1 && aiChatInput) {
+          aiChatInput.value = formatted;
+        } else if (activeVoiceTarget === 2 && aiChatInput2) {
+          aiChatInput2.value = formatted;
+        }
+      };
+
+      speechRecognition.onerror = (event) => {
+        console.warn('[Speech Recognition Error]:', event.error);
+        clearVoiceSilenceTimer();
+        stopVoiceRecognition();
+        if (event.error === 'not-allowed') {
+          showToast('Microphone permission denied.');
+        } else if (event.error !== 'no-speech') {
+          showToast(`Voice notice: ${event.error}`);
+        }
+      };
+
+      speechRecognition.onend = () => {
+        const target = activeVoiceTarget;
+        clearVoiceSilenceTimer();
+        stopVoiceRecognition();
+
+        // Clean and preserve dictated text in the active input box
+        const inputEl = (target === 1) ? aiChatInput : aiChatInput2;
+        if (inputEl) {
+          const cleaned = formatVoiceDiction(inputEl.value);
+          inputEl.value = cleaned;
+          inputEl.focus();
+          try {
+            inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+          } catch (e) {}
+        }
+      };
+    } catch (err) {
+      console.warn('[Speech Recognition Init Error]:', err);
+      speechRecognition = null;
+    }
+  }
+
+  // Set up microphone click handlers (supported in all browsers: Chrome, Firefox, Edge, Safari)
+  if (btnAiVoice) {
+    btnAiVoice.title = 'Voice Dictation (Tap to speak / Tap to finish)';
+    btnAiVoice.addEventListener('click', () => {
+      if (isVoiceListening) {
+        if (isUsingMediaRecorderFallback) {
+          stopMediaRecorderVoice();
+        } else if (speechRecognition) {
           clearVoiceSilenceTimer();
           speechRecognition.stop();
-        } else {
+        }
+      } else {
+        if (speechRecognition) {
           try {
             activeVoiceTarget = 1;
             speechRecognition.start();
-          } catch (e) { console.warn(e); }
+          } catch (e) {
+            console.warn('Speech recognition start failed, using MediaRecorder fallback:', e);
+            startMediaRecorderVoice(1);
+          }
+        } else {
+          // Firefox / cross-browser fallback
+          startMediaRecorderVoice(1);
         }
-      });
-    }
+      }
+    });
+  }
 
-    if (btnAiVoice2) {
-      btnAiVoice2.addEventListener('click', () => {
-        if (isVoiceListening) {
-          // User tapped to finish recording
+  if (btnAiVoice2) {
+    btnAiVoice2.title = 'Voice Dictation (Tap to speak / Tap to finish)';
+    btnAiVoice2.addEventListener('click', () => {
+      if (isVoiceListening) {
+        if (isUsingMediaRecorderFallback) {
+          stopMediaRecorderVoice();
+        } else if (speechRecognition) {
           clearVoiceSilenceTimer();
           speechRecognition.stop();
-        } else {
+        }
+      } else {
+        if (speechRecognition) {
           try {
             activeVoiceTarget = 2;
             speechRecognition.start();
-          } catch (e) { console.warn(e); }
+          } catch (e) {
+            console.warn('Speech recognition start failed, using MediaRecorder fallback:', e);
+            startMediaRecorderVoice(2);
+          }
+        } else {
+          // Firefox / cross-browser fallback
+          startMediaRecorderVoice(2);
         }
-      });
-    }
+      }
+    });
+  }
 
-    if (btnVoiceCancel) {
-      btnVoiceCancel.addEventListener('click', () => {
-        clearVoiceSilenceTimer();
-        if (speechRecognition && isVoiceListening) speechRecognition.abort();
+  if (btnVoiceCancel) {
+    btnVoiceCancel.addEventListener('click', () => {
+      clearVoiceSilenceTimer();
+      if (isUsingMediaRecorderFallback) {
+        stopMediaRecorderVoice(true);
+      } else if (speechRecognition && isVoiceListening) {
+        speechRecognition.abort();
         stopVoiceRecognition();
-      });
-    }
+      }
+    });
+  }
 
-    if (btnVoiceCancel2) {
-      btnVoiceCancel2.addEventListener('click', () => {
-        clearVoiceSilenceTimer();
-        if (speechRecognition && isVoiceListening) speechRecognition.abort();
+  if (btnVoiceCancel2) {
+    btnVoiceCancel2.addEventListener('click', () => {
+      clearVoiceSilenceTimer();
+      if (isUsingMediaRecorderFallback) {
+        stopMediaRecorderVoice(true);
+      } else if (speechRecognition && isVoiceListening) {
+        speechRecognition.abort();
         stopVoiceRecognition();
-      });
-    }
-  } catch (err) {
-    console.warn('[Speech Recognition Init Error]:', err);
+      }
+    });
   }
 }
 
 function stopVoiceRecognition() {
   isVoiceListening = false;
+  isUsingMediaRecorderFallback = false;
   clearVoiceSilenceTimer();
   if (btnAiVoice) btnAiVoice.classList.remove('is-listening');
   if (btnAiVoice2) btnAiVoice2.classList.remove('is-listening');
