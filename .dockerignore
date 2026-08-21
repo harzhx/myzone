@@ -1,0 +1,9 @@
+node_modules
+.tmp
+.git
+.gitignore
+.env
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
