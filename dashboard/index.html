@@ -1,7 +1,16 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    (function() {
+      try {
+        var savedTheme = localStorage.getItem('my_zone_theme');
+        var theme = savedTheme || 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Zone — Personal Hub & AI Digest</title>
   <meta name="description" content="Personal workspace: AI newsletter digest, monthly automated gym geofencing tracker, customizable active project pipelines, and dynamic Instagram in-app reel feeds." />
