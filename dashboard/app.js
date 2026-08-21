@@ -2960,27 +2960,17 @@ function renderAuthUI() {
     if (userRoleBadge) {
       if (user.isAdmin) {
         userRoleBadge.className = 'role-badge god-mode';
-        userRoleBadge.textContent = '⚡ God Mode';
-        userRoleBadge.title = 'God Mode: Permanent changes saved to server database';
+        userRoleBadge.textContent = 'Admin';
+        userRoleBadge.title = 'Administrator';
       } else {
         userRoleBadge.className = 'role-badge sandbox-mode';
-        userRoleBadge.textContent = '🏖️ Sandbox Mode';
-        userRoleBadge.title = 'Sandbox Mode: Interactive preview without modifying server database';
+        userRoleBadge.textContent = 'Member';
+        userRoleBadge.title = 'Member Account';
       }
     }
 
     if (dropdownUserName) dropdownUserName.textContent = displayName;
     if (dropdownUserEmail) dropdownUserEmail.textContent = user.email;
-
-    if (dropdownRoleTitle && dropdownRoleText) {
-      if (user.isAdmin) {
-        dropdownRoleTitle.textContent = '⚡ God Mode Active';
-        dropdownRoleText.textContent = 'Master changes are permanently saved to the server and database for all visitors.';
-      } else {
-        dropdownRoleTitle.textContent = '🏖️ Sandbox Mode Active';
-        dropdownRoleText.textContent = 'Interactive local preview. Master server updates are skipped to protect the official state.';
-      }
-    }
   } else {
     if (btnOpenAuth) btnOpenAuth.style.display = 'inline-flex';
     if (userProfileWrapper) {
@@ -3127,7 +3117,7 @@ function initAuthSystem() {
       state.auth.isAdmin = false;
 
       renderAuthUI();
-      showToast('Logged out. You are now in Sandbox Mode.');
+      showToast('Logged out successfully.');
       loadAllData(); // Reload master data from server
     });
   }
@@ -3182,11 +3172,7 @@ function initAuthSystem() {
         closeAuthModal();
         renderAuthUI();
 
-        if (data.user.isAdmin) {
-          showToast(`⚡ Welcome, ${data.user.name}! God Mode Active (Master writes enabled)`, 'saved-toast');
-        } else {
-          showToast(`🏖️ Welcome, ${data.user.name}! Sandbox Mode Active`, 'saved-toast');
-        }
+        showToast(`Welcome, ${data.user.name || 'User'}!`, 'saved-toast');
       } catch (err) {
         showAuthAlert('Network error: ' + err.message);
       } finally {
