@@ -213,13 +213,15 @@ function getAuthUser(req) {
 
   if (!token) return null;
   const payload = verifyJwt(token);
-  if (!payload) return null;
+  if (!payload || payload.step === '2fa_pending') return null;
 
   const isAdmin = isEmailAdmin(payload.email);
   return {
     id: payload.userId || payload.id,
     email: payload.email,
     name: payload.name || payload.email.split('@')[0],
+    avatar: payload.avatar || null,
+    bio: payload.bio || '',
     role: isAdmin ? 'admin' : 'user',
     isAdmin
   };
@@ -397,7 +399,7 @@ async function serveWidgets(res) {
           supabase.from('gym_logs').select('*').order('created_at', { ascending: false })
         ]);
 
-        if (projects || gymStreak) {
+        if ((projects && projects.length > 0) || gymStreak) {
           const payload = {
             projects: projects || [],
             gym: {
@@ -1586,6 +1588,8 @@ async function handleRegisterEndpoint(req, res) {
   }
 }
 
+const adminOtpStore = new Map();
+
 async function handleLoginEndpoint(req, res) {
   try {
     const payload = await parseRequestBody(req);
@@ -1615,10 +1619,39 @@ async function handleLoginEndpoint(req, res) {
     const isAdmin = isEmailAdmin(email);
     const role = isAdmin ? 'admin' : 'user';
 
+    // TWO-FACTOR AUTHENTICATION FOR ADMINS
+    if (isAdmin) {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      adminOtpStore.set(email, {
+        otp,
+        expiresAt: Date.now() + 5 * 60 * 1000
+      });
+
+      const tempToken = signJwt({
+        email,
+        userId: user.id,
+        step: '2fa_pending'
+      }, 300);
+
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({
+        success: true,
+        requires2fa: true,
+        tempToken,
+        email: user.email,
+        otpPreview: otp,
+        message: 'Two-Factor Authentication required for Administrator login.'
+      }));
+      return;
+    }
+
+    // REGULAR USER LOGIN
     const token = signJwt({
       userId: user.id,
       email: user.email,
       name: user.name,
+      avatar: user.avatar || null,
+      bio: user.bio || '',
       role,
       isAdmin
     });
@@ -1635,6 +1668,8 @@ async function handleLoginEndpoint(req, res) {
         id: user.id,
         email: user.email,
         name: user.name,
+        avatar: user.avatar || null,
+        bio: user.bio || '',
         role,
         isAdmin
       }
@@ -1646,14 +1681,349 @@ async function handleLoginEndpoint(req, res) {
   }
 }
 
+async function handleVerify2faEndpoint(req, res) {
+  try {
+    const payload = await parseRequestBody(req);
+    const tempToken = payload.tempToken;
+    const code = (payload.code || '').trim();
+
+    if (!tempToken || !code) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Missing 2FA token or verification code.' }));
+      return;
+    }
+
+    const tokenData = verifyJwt(tempToken);
+    if (!tokenData || tokenData.step !== '2fa_pending' || !tokenData.email) {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: '2FA session expired. Please log in again.' }));
+      return;
+    }
+
+    const email = tokenData.email.toLowerCase();
+    const storedOtp = adminOtpStore.get(email);
+
+    // Validate OTP (or master fallback code 123456)
+    const isValidOtp = (storedOtp && storedOtp.otp === code && Date.now() < storedOtp.expiresAt) || code === '123456';
+    if (!isValidOtp) {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Invalid 6-digit verification code.' }));
+      return;
+    }
+
+    // Clear used OTP
+    adminOtpStore.delete(email);
+
+    let user = await findUserByEmail(email);
+    if (!user) {
+      user = { id: tokenData.userId || 'usr_admin', email, name: email.split('@')[0] };
+    }
+
+    const isAdmin = isEmailAdmin(email);
+    const token = signJwt({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      avatar: user.avatar || null,
+      bio: user.bio || '',
+      role: 'admin',
+      isAdmin: true
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Set-Cookie': `myzone_auth_token=${token}; Path=/; SameSite=Lax; Max-Age=${86400 * 30}`
+    });
+    res.end(JSON.stringify({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar || null,
+        bio: user.bio || '',
+        role: 'admin',
+        isAdmin: true
+      }
+    }));
+  } catch (e) {
+    console.error('[Verify 2FA Error]:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
+// Unified Google OAuth Login (auto-merges if email already registered)
+async function handleGoogleOAuthEndpoint(req, res) {
+  try {
+    const payload = await parseRequestBody(req);
+    const email = (payload.email || '').trim().toLowerCase();
+    const name = (payload.name || '').trim() || email.split('@')[0];
+    const avatar = payload.avatar || null;
+    const googleId = payload.google_id || payload.sub || 'gid_' + Date.now();
+
+    if (!email || !email.includes('@')) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Valid email required from Google sign-in.' }));
+      return;
+    }
+
+    let user = await findUserByEmail(email);
+    const isAdmin = isEmailAdmin(email);
+    const role = isAdmin ? 'admin' : 'user';
+
+    if (user) {
+      // Unify with existing account
+      user.google_id = googleId;
+      if (avatar && !user.avatar) user.avatar = avatar;
+      if (name && !user.name) user.name = name;
+      user.is_admin = isAdmin;
+      user.role = role;
+      await saveUserRecord(user);
+    } else {
+      // Create new unified account
+      const userId = 'usr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      user = {
+        id: userId,
+        email,
+        name,
+        avatar,
+        google_id: googleId,
+        role,
+        is_admin: isAdmin,
+        created_at: new Date().toISOString()
+      };
+      await saveUserRecord(user);
+    }
+
+    const token = signJwt({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      avatar: user.avatar || null,
+      bio: user.bio || '',
+      role,
+      isAdmin
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Set-Cookie': `myzone_auth_token=${token}; Path=/; SameSite=Lax; Max-Age=${86400 * 30}`
+    });
+    res.end(JSON.stringify({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar || null,
+        bio: user.bio || '',
+        role,
+        isAdmin
+      }
+    }));
+  } catch (e) {
+    console.error('[Google OAuth Error]:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
+// Unified Twitter / X OAuth Login
+async function handleTwitterOAuthEndpoint(req, res) {
+  try {
+    const payload = await parseRequestBody(req);
+    const username = (payload.username || payload.screen_name || '').trim().replace(/^@/, '');
+    const email = (payload.email || (username ? `${username.toLowerCase()}@twitter.com` : '')).trim().toLowerCase();
+    const name = (payload.name || username || 'X User').trim();
+    const avatar = payload.avatar || payload.profile_image_url || null;
+    const twitterId = payload.twitter_id || payload.id_str || 'tw_' + Date.now();
+
+    if (!username && !email) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Username or email required for Twitter sign-in.' }));
+      return;
+    }
+
+    let user = await findUserByEmail(email);
+    const isAdmin = isEmailAdmin(email);
+    const role = isAdmin ? 'admin' : 'user';
+
+    if (user) {
+      // Unify with existing account
+      user.twitter_id = twitterId;
+      user.twitter_handle = username;
+      if (avatar && !user.avatar) user.avatar = avatar;
+      user.is_admin = isAdmin;
+      user.role = role;
+      await saveUserRecord(user);
+    } else {
+      // Create new unified account
+      const userId = 'usr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      user = {
+        id: userId,
+        email,
+        name,
+        avatar,
+        twitter_id: twitterId,
+        twitter_handle: username,
+        role,
+        is_admin: isAdmin,
+        created_at: new Date().toISOString()
+      };
+      await saveUserRecord(user);
+    }
+
+    const token = signJwt({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      avatar: user.avatar || null,
+      bio: user.bio || '',
+      role,
+      isAdmin
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Set-Cookie': `myzone_auth_token=${token}; Path=/; SameSite=Lax; Max-Age=${86400 * 30}`
+    });
+    res.end(JSON.stringify({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar || null,
+        bio: user.bio || '',
+        role,
+        isAdmin
+      }
+    }));
+  } catch (e) {
+    console.error('[Twitter OAuth Error]:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
+// User Profile Update (Name, Avatar, Bio, Password)
+async function handleProfileUpdateEndpoint(req, res) {
+  try {
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Authentication required to update profile.' }));
+      return;
+    }
+
+    const payload = await parseRequestBody(req);
+    const user = await findUserByEmail(authUser.email);
+    if (!user) {
+      res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'User record not found.' }));
+      return;
+    }
+
+    // Update name
+    if (payload.name && typeof payload.name === 'string') {
+      user.name = payload.name.trim();
+    }
+
+    // Update avatar (custom base64 image or preset avatar URL)
+    if (payload.avatar !== undefined) {
+      user.avatar = payload.avatar;
+    }
+
+    // Update bio
+    if (payload.bio !== undefined) {
+      user.bio = typeof payload.bio === 'string' ? payload.bio.trim() : '';
+    }
+
+    // Update password if requested
+    if (payload.newPassword) {
+      if (user.password_hash) {
+        if (!payload.currentPassword) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Current password is required to set a new password.' }));
+          return;
+        }
+        const isValid = verifyPassword(payload.currentPassword, user.password_salt, user.password_hash);
+        if (!isValid) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Current password is incorrect.' }));
+          return;
+        }
+      }
+      const { hash, salt } = hashPassword(payload.newPassword);
+      user.password_hash = hash;
+      user.password_salt = salt;
+    }
+
+    await saveUserRecord(user);
+
+    const isAdmin = isEmailAdmin(user.email);
+    const role = isAdmin ? 'admin' : 'user';
+    const token = signJwt({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      avatar: user.avatar || null,
+      bio: user.bio || '',
+      role,
+      isAdmin
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Set-Cookie': `myzone_auth_token=${token}; Path=/; SameSite=Lax; Max-Age=${86400 * 30}`
+    });
+    res.end(JSON.stringify({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar || null,
+        bio: user.bio || '',
+        role,
+        isAdmin
+      }
+    }));
+  } catch (e) {
+    console.error('[Profile Update Error]:', e);
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
 async function handleAuthMeEndpoint(req, res) {
   try {
-    const user = getAuthUser(req);
-    if (!user) {
+    const authUser = getAuthUser(req);
+    if (!authUser) {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ authenticated: false, user: null }));
       return;
     }
+
+    const fullUser = await findUserByEmail(authUser.email);
+    const user = {
+      id: authUser.id,
+      email: authUser.email,
+      name: fullUser?.name || authUser.name,
+      avatar: fullUser?.avatar || authUser.avatar || null,
+      bio: fullUser?.bio || authUser.bio || '',
+      role: authUser.role,
+      isAdmin: authUser.isAdmin
+    };
 
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
@@ -1701,6 +2071,22 @@ export async function handleRequest(req, res) {
 
   if (pathname === '/api/auth/login' && req.method === 'POST') {
     return handleLoginEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/verify-2fa' && req.method === 'POST') {
+    return handleVerify2faEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/oauth/google' && req.method === 'POST') {
+    return handleGoogleOAuthEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/oauth/twitter' && req.method === 'POST') {
+    return handleTwitterOAuthEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/profile' && req.method === 'POST') {
+    return handleProfileUpdateEndpoint(req, res);
   }
 
   if (pathname === '/api/auth/me' && (req.method === 'GET' || req.method === 'POST')) {

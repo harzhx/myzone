@@ -11,6 +11,10 @@ const API_BOT_DISPATCH = '/api/bot/dispatch-webhook';
 const API_BOT_TRANSCRIBE = '/api/bot/transcribe';
 const API_AUTH_REGISTER = '/api/auth/register';
 const API_AUTH_LOGIN    = '/api/auth/login';
+const API_AUTH_VERIFY_2FA= '/api/auth/verify-2fa';
+const API_AUTH_OAUTH_GOOGLE = '/api/auth/oauth/google';
+const API_AUTH_OAUTH_TWITTER = '/api/auth/oauth/twitter';
+const API_AUTH_PROFILE  = '/api/auth/profile';
 const API_AUTH_ME       = '/api/auth/me';
 const API_AUTH_LOGOUT   = '/api/auth/logout';
 
@@ -183,10 +187,11 @@ const btnAiVoice2       = document.getElementById('btn-ai-voice-2');
 const aiVoiceStatus2    = document.getElementById('ai-voice-status-2');
 const btnVoiceCancel2   = document.getElementById('btn-voice-cancel-2');
 
-const webhookModal    = document.getElementById('webhook-modal');
-const webhookModalClose=document.getElementById('webhook-modal-close');
-const btnCancelWebhook= document.getElementById('btn-cancel-webhook');
-const btnSaveWebhook  = document.getElementById('btn-save-webhook');
+// Webhook Modal & Toast
+const modalBackdrop   = document.getElementById('integration-modal');
+const modalCloseBtn   = document.getElementById('modal-close-btn');
+const modalDoneBtn    = document.getElementById('modal-done-btn');
+const toast           = document.getElementById('toast');
 const webhookUrlInput = document.getElementById('webhook-url-input');
 
 // Auth & Roles DOM Refs
@@ -201,6 +206,7 @@ const userProfileDropdown = document.getElementById('user-dropdown-menu');
 const dropdownUserAvatar  = document.getElementById('dropdown-user-avatar');
 const dropdownUserName    = document.getElementById('dropdown-user-name');
 const dropdownUserEmail   = document.getElementById('dropdown-user-email');
+const btnDropdownProfile  = document.getElementById('btn-dropdown-profile');
 const btnDropdownWebhooks = document.getElementById('btn-dropdown-webhooks');
 const btnSwitchAccount    = document.getElementById('btn-switch-account');
 const btnLogout           = document.getElementById('btn-logout');
@@ -210,6 +216,17 @@ const authModal           = document.getElementById('auth-modal');
 const authModalTitle      = document.getElementById('auth-modal-title');
 const authModalSubtitle   = document.getElementById('auth-modal-subtitle');
 const authModalClose      = document.getElementById('auth-modal-close');
+const authMainView        = document.getElementById('auth-main-view');
+const auth2faView         = document.getElementById('auth-2fa-view');
+const auth2faAlert        = document.getElementById('auth-2fa-alert');
+const auth2faForm         = document.getElementById('auth-2fa-form');
+const authInputOtp        = document.getElementById('auth-input-otp');
+const btnVerify2fa        = document.getElementById('btn-verify-2fa');
+const auth2faSubmitText   = document.getElementById('auth-2fa-submit-text');
+const btn2faBack          = document.getElementById('btn-2fa-back');
+const authModalFooter     = document.getElementById('auth-modal-footer');
+const btnOAuthGoogle      = document.getElementById('btn-oauth-google');
+const btnOAuthTwitter     = document.getElementById('btn-oauth-twitter');
 const authTabLogin        = document.getElementById('auth-tab-login');
 const authTabSignup       = document.getElementById('auth-tab-signup');
 const authAlert           = document.getElementById('auth-alert');
@@ -223,6 +240,22 @@ const btnAuthSubmit       = document.getElementById('btn-auth-submit');
 const authSubmitText      = document.getElementById('auth-submit-text');
 const authTogglePrompt    = document.getElementById('auth-toggle-prompt');
 const btnAuthToggleMode   = document.getElementById('btn-auth-toggle-mode');
+
+// Profile Modal DOM Refs
+const profileModal        = document.getElementById('profile-modal');
+const profileModalClose   = document.getElementById('profile-modal-close');
+const btnCancelProfile    = document.getElementById('btn-cancel-profile');
+const btnSaveProfile      = document.getElementById('btn-save-profile');
+const profileAlert        = document.getElementById('profile-alert');
+const profilePfpPreview   = document.getElementById('profile-pfp-preview');
+const pfpFileInput        = document.getElementById('pfp-file-input');
+const btnRemovePfp        = document.getElementById('btn-remove-pfp');
+const avatarPresetsGrid   = document.getElementById('avatar-presets-grid');
+const profileInputName    = document.getElementById('profile-input-name');
+const profileInputEmail   = document.getElementById('profile-input-email');
+const profileInputBio     = document.getElementById('profile-input-bio');
+const profileCurrentPwd   = document.getElementById('profile-current-pwd');
+const profileNewPwd       = document.getElementById('profile-new-pwd');
 
 // Geofence Modal
 const geofenceModal   = document.getElementById('geofence-modal');
@@ -246,12 +279,6 @@ const newPill         = document.getElementById('new-pill');
 const newPillLabel    = document.getElementById('new-pill-label');
 const lastUpdated     = document.getElementById('last-updated');
 const tabs            = document.querySelectorAll('.tab[data-filter]');
-
-// Webhook Modal & Toast
-const modalBackdrop   = document.getElementById('integration-modal');
-const modalCloseBtn   = document.getElementById('modal-close');
-const modalDoneBtn    = document.getElementById('modal-done-btn');
-const toast           = document.getElementById('toast');
 
 
 // ========================= THEME ENGINE =========================
@@ -1448,24 +1475,34 @@ function init() {
   });
 
   // Webhook Modal Open/Close
-  btnProjectManage.addEventListener('click', () => {
-    modalBackdrop.style.display = 'flex';
-  });
-  modalCloseBtn.addEventListener('click', () => {
-    modalBackdrop.style.display = 'none';
-  });
-  modalDoneBtn.addEventListener('click', () => {
-    modalBackdrop.style.display = 'none';
-  });
-  modalBackdrop.addEventListener('click', (e) => {
-    if (e.target === modalBackdrop) modalBackdrop.style.display = 'none';
-  });
+  if (btnProjectManage && modalBackdrop) {
+    btnProjectManage.addEventListener('click', () => {
+      modalBackdrop.style.display = 'flex';
+    });
+  }
+  if (modalCloseBtn && modalBackdrop) {
+    modalCloseBtn.addEventListener('click', () => {
+      modalBackdrop.style.display = 'none';
+    });
+  }
+  if (modalDoneBtn && modalBackdrop) {
+    modalDoneBtn.addEventListener('click', () => {
+      modalBackdrop.style.display = 'none';
+    });
+  }
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener('click', (e) => {
+      if (e.target === modalBackdrop) modalBackdrop.style.display = 'none';
+    });
+  }
 
   // Refresh
-  refreshBtn.addEventListener('click', doRefresh);
+  if (refreshBtn) refreshBtn.addEventListener('click', doRefresh);
 
   // Error bar close
-  errorClose.addEventListener('click', () => { errorBar.style.display = 'none'; });
+  if (errorClose && errorBar) {
+    errorClose.addEventListener('click', () => { errorBar.style.display = 'none'; });
+  }
 
   // Delegated image fallback
   document.addEventListener('error', (e) => {
@@ -2945,6 +2982,28 @@ async function checkAuthSession() {
   renderAuthUI();
 }
 
+// Curated Avatar Presets
+const AVATAR_PRESETS = [
+  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=120&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=120&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80'
+];
+
+let selectedProfileAvatar = null;
+let pending2faTempToken = null;
+
+function renderAvatarElement(container, initial, avatarUrl) {
+  if (!container) return;
+  if (avatarUrl) {
+    container.innerHTML = `<img src="${avatarUrl}" alt="Avatar" />`;
+  } else {
+    container.textContent = initial || 'U';
+  }
+}
+
 function renderAuthUI() {
   if (state.auth.isAuthenticated && state.auth.user) {
     const user = state.auth.user;
@@ -2954,8 +3013,8 @@ function renderAuthUI() {
     const displayName = user.name || user.email.split('@')[0];
     const initial = (displayName.charAt(0) || 'U').toUpperCase();
 
-    if (userAvatarInitials) userAvatarInitials.textContent = initial;
-    if (dropdownUserAvatar) dropdownUserAvatar.textContent = initial;
+    renderAvatarElement(userAvatarInitials, initial, user.avatar);
+    renderAvatarElement(dropdownUserAvatar, initial, user.avatar);
     if (userDisplayName) userDisplayName.textContent = displayName;
 
     if (userRoleBadge) {
@@ -2987,6 +3046,12 @@ let authMode = 'login'; // 'login' | 'signup'
 function setAuthMode(mode) {
   authMode = mode;
   if (authAlert) authAlert.style.display = 'none';
+  if (auth2faAlert) auth2faAlert.style.display = 'none';
+
+  // Always reset to main credentials view
+  if (authMainView) authMainView.style.display = 'block';
+  if (auth2faView) auth2faView.style.display = 'none';
+  if (authModalFooter) authModalFooter.style.display = 'block';
 
   if (mode === 'signup') {
     if (authTabSignup) { authTabSignup.classList.add('active'); authTabSignup.setAttribute('aria-selected', 'true'); }
@@ -3002,7 +3067,7 @@ function setAuthMode(mode) {
     if (authTabSignup) { authTabSignup.classList.remove('active'); authTabSignup.setAttribute('aria-selected', 'false'); }
     if (authFieldName) authFieldName.style.display = 'none';
     if (authModalTitle) authModalTitle.textContent = 'Sign In to My Zone';
-    if (authModalSubtitle) authModalSubtitle.textContent = 'Access your personal hub, AI copilots, and trackers';
+    if (authModalSubtitle) authModalSubtitle.textContent = 'Access your personal dashboard, trackers, and AI assistant';
     if (authSubmitText) authSubmitText.textContent = 'Log In';
     if (authTogglePrompt) authTogglePrompt.textContent = "Don't have an account?";
     if (btnAuthToggleMode) btnAuthToggleMode.textContent = 'Create an account';
@@ -3016,11 +3081,20 @@ function showAuthAlert(msg, isSuccess = false) {
   authAlert.style.display = 'block';
 }
 
+function show2faAlert(msg, isSuccess = false) {
+  if (!auth2faAlert) return;
+  auth2faAlert.textContent = msg;
+  auth2faAlert.className = `auth-alert ${isSuccess ? 'success' : 'error'}`;
+  auth2faAlert.style.display = 'block';
+}
+
 function openAuthModal(initialMode = 'login') {
   setAuthMode(initialMode);
   if (authInputEmail) authInputEmail.value = '';
   if (authInputPassword) authInputPassword.value = '';
   if (authInputName) authInputName.value = '';
+  if (authInputOtp) authInputOtp.value = '';
+  pending2faTempToken = null;
   if (authModal) authModal.style.display = 'flex';
   setTimeout(() => {
     if (initialMode === 'signup' && authInputName) authInputName.focus();
@@ -3031,6 +3105,66 @@ function openAuthModal(initialMode = 'login') {
 function closeAuthModal() {
   if (authModal) authModal.style.display = 'none';
   if (authAlert) authAlert.style.display = 'none';
+  if (auth2faAlert) auth2faAlert.style.display = 'none';
+  pending2faTempToken = null;
+}
+
+// ----------------- Profile Modal -----------------
+function renderProfileAvatarPreview() {
+  if (!profilePfpPreview) return;
+  const user = state.auth.user;
+  const initial = user ? (user.name || user.email || 'U').charAt(0).toUpperCase() : 'U';
+  renderAvatarElement(profilePfpPreview, initial, selectedProfileAvatar);
+}
+
+function renderAvatarPresets() {
+  if (!avatarPresetsGrid) return;
+  avatarPresetsGrid.innerHTML = '';
+  AVATAR_PRESETS.forEach(url => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `avatar-preset-btn ${selectedProfileAvatar === url ? 'selected' : ''}`;
+    btn.innerHTML = `<img src="${url}" alt="Preset Avatar" />`;
+    btn.addEventListener('click', () => {
+      selectedProfileAvatar = url;
+      renderProfileAvatarPreview();
+      renderAvatarPresets();
+    });
+    avatarPresetsGrid.appendChild(btn);
+  });
+}
+
+function openProfileModal() {
+  if (!state.auth.isAuthenticated || !state.auth.user) {
+    openAuthModal('login');
+    return;
+  }
+  const user = state.auth.user;
+  selectedProfileAvatar = user.avatar || null;
+
+  if (profileInputName) profileInputName.value = user.name || '';
+  if (profileInputEmail) profileInputEmail.value = user.email || '';
+  if (profileInputBio) profileInputBio.value = user.bio || '';
+  if (profileCurrentPwd) profileCurrentPwd.value = '';
+  if (profileNewPwd) profileNewPwd.value = '';
+  if (profileAlert) profileAlert.style.display = 'none';
+
+  renderProfileAvatarPreview();
+  renderAvatarPresets();
+
+  if (profileModal) profileModal.style.display = 'flex';
+}
+
+function closeProfileModal() {
+  if (profileModal) profileModal.style.display = 'none';
+  if (profileAlert) profileAlert.style.display = 'none';
+}
+
+function showProfileAlert(msg, isSuccess = false) {
+  if (!profileAlert) return;
+  profileAlert.textContent = msg;
+  profileAlert.className = `profile-alert ${isSuccess ? 'success' : 'error'}`;
+  profileAlert.style.display = 'block';
 }
 
 function initAuthSystem() {
@@ -3101,6 +3235,15 @@ function initAuthSystem() {
     });
   }
 
+  // Dropdown Edit Profile action
+  if (btnDropdownProfile) {
+    btnDropdownProfile.addEventListener('click', () => {
+      if (userProfileDropdown) userProfileDropdown.style.display = 'none';
+      if (userProfileWrapper) userProfileWrapper.classList.remove('is-open');
+      openProfileModal();
+    });
+  }
+
   // Dropdown Settings / Webhooks
   if (btnDropdownWebhooks) {
     btnDropdownWebhooks.addEventListener('click', () => {
@@ -3139,7 +3282,87 @@ function initAuthSystem() {
     });
   }
 
-  // Auth Form Submit
+  // Social Login: Google OAuth
+  if (btnOAuthGoogle) {
+    btnOAuthGoogle.addEventListener('click', async () => {
+      const email = prompt('Enter your Google Account email to continue:', state.auth.user?.email || 'harzhx@gmail.com');
+      if (!email || !email.trim()) return;
+      try {
+        btnOAuthGoogle.disabled = true;
+        const res = await fetch(API_AUTH_OAUTH_GOOGLE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            name: email.split('@')[0],
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+            google_id: 'google_' + Date.now()
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.token) {
+          localStorage.setItem(LS_AUTH_TOKEN, data.token);
+          state.auth.token = data.token;
+          state.auth.user = data.user;
+          state.auth.isAuthenticated = true;
+          state.auth.isAdmin = Boolean(data.user.isAdmin);
+          closeAuthModal();
+          renderAuthUI();
+          showToast(`Signed in with Google as ${data.user.name || data.user.email}!`, 'saved-toast');
+          loadAllData();
+        } else {
+          showAuthAlert(data.error || 'Google sign-in failed.');
+        }
+      } catch (e) {
+        showAuthAlert(e.message);
+      } finally {
+        btnOAuthGoogle.disabled = false;
+      }
+    });
+  }
+
+  // Social Login: Twitter / X OAuth
+  if (btnOAuthTwitter) {
+    btnOAuthTwitter.addEventListener('click', async () => {
+      const handle = prompt('Enter your X (Twitter) username or email:', '@harzhx');
+      if (!handle || !handle.trim()) return;
+      try {
+        btnOAuthTwitter.disabled = true;
+        const username = handle.trim().replace(/^@/, '');
+        const res = await fetch(API_AUTH_OAUTH_TWITTER, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            email: handle.includes('@') ? handle.trim() : `${username.toLowerCase()}@twitter.com`,
+            name: username,
+            avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=80',
+            twitter_id: 'tw_' + Date.now()
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.token) {
+          localStorage.setItem(LS_AUTH_TOKEN, data.token);
+          state.auth.token = data.token;
+          state.auth.user = data.user;
+          state.auth.isAuthenticated = true;
+          state.auth.isAdmin = Boolean(data.user.isAdmin);
+          closeAuthModal();
+          renderAuthUI();
+          showToast(`Signed in with X as @${username}!`, 'saved-toast');
+          loadAllData();
+        } else {
+          showAuthAlert(data.error || 'X sign-in failed.');
+        }
+      } catch (e) {
+        showAuthAlert(e.message);
+      } finally {
+        btnOAuthTwitter.disabled = false;
+      }
+    });
+  }
+
+  // Auth Form Submit (Email & Password)
   if (authForm) {
     authForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -3179,7 +3402,23 @@ function initAuthSystem() {
           return;
         }
 
-        // Authentication Success
+        // CHECK IF 2FA REQUIRED (ADMIN LOGIN)
+        if (data.requires2fa) {
+          pending2faTempToken = data.tempToken;
+          if (authMainView) authMainView.style.display = 'none';
+          if (auth2faView) auth2faView.style.display = 'block';
+          if (authModalFooter) authModalFooter.style.display = 'none';
+          if (authInputOtp) {
+            authInputOtp.value = '';
+            setTimeout(() => authInputOtp.focus(), 100);
+          }
+          if (data.otpPreview) {
+            show2faAlert(`⚡ Admin 2FA Code: ${data.otpPreview}`, true);
+          }
+          return;
+        }
+
+        // Regular User Success
         localStorage.setItem(LS_AUTH_TOKEN, data.token);
         state.auth.token = data.token;
         state.auth.user = data.user;
@@ -3190,6 +3429,7 @@ function initAuthSystem() {
         renderAuthUI();
 
         showToast(`Welcome, ${data.user.name || 'User'}!`, 'saved-toast');
+        loadAllData();
       } catch (err) {
         showAuthAlert('Network error: ' + err.message);
       } finally {
@@ -3197,6 +3437,162 @@ function initAuthSystem() {
           btnAuthSubmit.disabled = false;
           if (authSubmitText) authSubmitText.textContent = authMode === 'signup' ? 'Create Account' : 'Log In';
         }
+      }
+    });
+  }
+
+  // 2FA Verification Form Submit
+  if (auth2faForm) {
+    auth2faForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = authInputOtp.value.trim();
+      if (!code || code.length !== 6) {
+        show2faAlert('Please enter a valid 6-digit verification code.');
+        return;
+      }
+      if (!pending2faTempToken) {
+        show2faAlert('2FA session expired. Please log in again.');
+        return;
+      }
+
+      if (btnVerify2fa) {
+        btnVerify2fa.disabled = true;
+        if (auth2faSubmitText) auth2faSubmitText.textContent = 'Verifying Code...';
+      }
+
+      try {
+        const res = await fetch(API_AUTH_VERIFY_2FA, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tempToken: pending2faTempToken, code })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          show2faAlert(data.error || 'Invalid 6-digit code. Please check and retry.');
+          return;
+        }
+
+        // 2FA Success -> Admin Authenticated!
+        localStorage.setItem(LS_AUTH_TOKEN, data.token);
+        state.auth.token = data.token;
+        state.auth.user = data.user;
+        state.auth.isAuthenticated = true;
+        state.auth.isAdmin = true;
+
+        closeAuthModal();
+        renderAuthUI();
+        showToast(`⚡ Welcome Admin ${data.user.name || ''}! (2FA Verified)`, 'saved-toast');
+        loadAllData();
+      } catch (err) {
+        show2faAlert(err.message);
+      } finally {
+        if (btnVerify2fa) {
+          btnVerify2fa.disabled = false;
+          if (auth2faSubmitText) auth2faSubmitText.textContent = 'Verify & Access Admin';
+        }
+      }
+    });
+  }
+
+  if (btn2faBack) {
+    btn2faBack.addEventListener('click', () => {
+      setAuthMode('login');
+    });
+  }
+
+  // Profile Modal Wiring
+  if (profileModalClose) {
+    profileModalClose.addEventListener('click', closeProfileModal);
+  }
+  if (btnCancelProfile) {
+    btnCancelProfile.addEventListener('click', closeProfileModal);
+  }
+  if (profileModal) {
+    profileModal.addEventListener('click', (e) => {
+      if (e.target === profileModal) closeProfileModal();
+    });
+  }
+
+  // Upload Custom Photo (File Reader)
+  if (pfpFileInput) {
+    pfpFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        showProfileAlert('Image file size must be less than 2MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        selectedProfileAvatar = reader.result;
+        renderProfileAvatarPreview();
+        renderAvatarPresets();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Remove Photo
+  if (btnRemovePfp) {
+    btnRemovePfp.addEventListener('click', () => {
+      selectedProfileAvatar = null;
+      renderProfileAvatarPreview();
+      renderAvatarPresets();
+    });
+  }
+
+  // Save Profile Changes
+  if (btnSaveProfile) {
+    btnSaveProfile.addEventListener('click', async () => {
+      const name = profileInputName.value.trim();
+      const bio = profileInputBio ? profileInputBio.value.trim() : '';
+      const currentPassword = profileCurrentPwd ? profileCurrentPwd.value : '';
+      const newPassword = profileNewPwd ? profileNewPwd.value : '';
+
+      if (!name) {
+        showProfileAlert('Please enter a display name.');
+        return;
+      }
+
+      btnSaveProfile.disabled = true;
+      btnSaveProfile.textContent = 'Saving...';
+
+      try {
+        const res = await fetch(API_AUTH_PROFILE, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.auth.token}`
+          },
+          body: JSON.stringify({
+            name,
+            avatar: selectedProfileAvatar,
+            bio,
+            currentPassword: currentPassword || undefined,
+            newPassword: newPassword || undefined
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          showProfileAlert(data.error || 'Failed to update profile.');
+          return;
+        }
+
+        localStorage.setItem(LS_AUTH_TOKEN, data.token);
+        state.auth.token = data.token;
+        state.auth.user = data.user;
+        state.auth.isAdmin = Boolean(data.user.isAdmin);
+
+        closeProfileModal();
+        renderAuthUI();
+        showToast('Profile updated successfully!', 'saved-toast');
+      } catch (e) {
+        showProfileAlert(e.message);
+      } finally {
+        btnSaveProfile.disabled = false;
+        btnSaveProfile.textContent = 'Save Changes';
       }
     });
   }

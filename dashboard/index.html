@@ -127,6 +127,11 @@
 
             <div class="user-dropdown-divider"></div>
 
+            <button class="user-dropdown-item" id="btn-dropdown-profile" type="button" role="menuitem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <span>Edit Profile</span>
+            </button>
+
             <button class="user-dropdown-item" id="btn-dropdown-webhooks" type="button" role="menuitem">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               <span>Settings & Integrations</span>
@@ -607,58 +612,191 @@ Content-Type: application/json
     </div>
   </div>
 
-  <!-- ===== USER AUTHENTICATION MODAL (LOGIN & SIGN UP) ===== -->
+  <!-- ===== USER AUTHENTICATION MODAL (LOGIN, SIGN UP, OAUTH, 2FA) ===== -->
   <div class="modal-backdrop" id="auth-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
     <div class="modal-card auth-modal-card">
       <div class="modal-header">
         <div>
           <h3 class="modal-title" id="auth-modal-title">Sign In to My Zone</h3>
-          <p class="auth-modal-subtitle" id="auth-modal-subtitle">Access your personal hub, AI copilots, and trackers</p>
+          <p class="auth-modal-subtitle" id="auth-modal-subtitle">Access your personal dashboard, trackers, and AI assistant</p>
         </div>
         <button class="modal-close" id="auth-modal-close" aria-label="Close modal">✕</button>
       </div>
 
       <div class="modal-body">
-        <!-- Mode Tabs -->
-        <div class="auth-tabs" role="tablist">
-          <button class="auth-tab active" id="auth-tab-login" type="button" role="tab" aria-selected="true">Log In</button>
-          <button class="auth-tab" id="auth-tab-signup" type="button" role="tab" aria-selected="false">Create Account</button>
+        <!-- Main Login/Signup View -->
+        <div id="auth-main-view">
+          <!-- Social OAuth Buttons -->
+          <div class="oauth-buttons-wrap">
+            <button type="button" class="btn-oauth btn-oauth-google" id="btn-oauth-google">
+              <svg width="18" height="18" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.35 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+            <button type="button" class="btn-oauth btn-oauth-twitter" id="btn-oauth-twitter">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+              <span>Continue with X (Twitter)</span>
+            </button>
+          </div>
+
+          <div class="oauth-divider">
+            <span>or with email</span>
+          </div>
+
+          <!-- Mode Tabs -->
+          <div class="auth-tabs" role="tablist">
+            <button class="auth-tab active" id="auth-tab-login" type="button" role="tab" aria-selected="true">Log In</button>
+            <button class="auth-tab" id="auth-tab-signup" type="button" role="tab" aria-selected="false">Create Account</button>
+          </div>
+
+          <!-- Alert Container -->
+          <div class="auth-alert" id="auth-alert" style="display:none;" role="alert"></div>
+
+          <!-- Form -->
+          <form id="auth-form" class="auth-form" onsubmit="return false;">
+            <div class="auth-field" id="auth-field-name" style="display:none;">
+              <label for="auth-input-name">Full Name</label>
+              <input type="text" id="auth-input-name" placeholder="e.g. Yash Sharma" autocomplete="name" />
+            </div>
+
+            <div class="auth-field">
+              <label for="auth-input-email">Email Address</label>
+              <input type="email" id="auth-input-email" placeholder="name@domain.com" required autocomplete="email" />
+            </div>
+
+            <div class="auth-field">
+              <label for="auth-input-password">Password</label>
+              <div class="password-input-wrapper">
+                <input type="password" id="auth-input-password" placeholder="••••••••" required autocomplete="current-password" />
+                <button type="button" class="btn-toggle-pw" id="btn-toggle-pw" aria-label="Toggle password visibility" tabindex="-1">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-auth-submit" id="btn-auth-submit">
+              <span id="auth-submit-text">Log In</span>
+            </button>
+          </form>
         </div>
 
-        <!-- Alert Container -->
-        <div class="auth-alert" id="auth-alert" style="display:none;" role="alert"></div>
-
-        <!-- Form -->
-        <form id="auth-form" class="auth-form" onsubmit="return false;">
-          <div class="auth-field" id="auth-field-name" style="display:none;">
-            <label for="auth-input-name">Full Name</label>
-            <input type="text" id="auth-input-name" placeholder="e.g. Yash Sharma" autocomplete="name" />
+        <!-- 2FA OTP Step View (Appears on Admin Logins) -->
+        <div id="auth-2fa-view" style="display:none;">
+          <div class="auth-2fa-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </div>
+          <h4 class="auth-2fa-title">Administrator 2FA Verification</h4>
+          <p class="auth-2fa-desc">Please enter the 6-digit security code generated for your admin account.</p>
 
-          <div class="auth-field">
-            <label for="auth-input-email">Email Address</label>
-            <input type="email" id="auth-input-email" placeholder="name@domain.com" required autocomplete="email" />
-          </div>
+          <div class="auth-alert" id="auth-2fa-alert" style="display:none;" role="alert"></div>
 
-          <div class="auth-field">
-            <label for="auth-input-password">Password</label>
-            <div class="password-input-wrapper">
-              <input type="password" id="auth-input-password" placeholder="••••••••" required autocomplete="current-password" />
-              <button type="button" class="btn-toggle-pw" id="btn-toggle-pw" aria-label="Toggle password visibility" tabindex="-1">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
+          <form id="auth-2fa-form" onsubmit="return false;">
+            <div class="auth-field">
+              <label for="auth-input-otp">6-Digit Security Code</label>
+              <input type="text" id="auth-input-otp" class="otp-input" placeholder="000000" maxlength="6" pattern="[0-9]*" inputmode="numeric" required autofocus />
+            </div>
+
+            <button type="submit" class="btn-auth-submit" id="btn-verify-2fa">
+              <span id="auth-2fa-submit-text">Verify & Access Admin</span>
+            </button>
+
+            <button type="button" class="btn-link btn-2fa-back" id="btn-2fa-back">← Back to Log In</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="auth-modal-footer" id="auth-modal-footer">
+        <span id="auth-toggle-prompt">Don't have an account?</span>
+        <button type="button" class="btn-link" id="btn-auth-toggle-mode">Create an account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PROFILE SETTINGS MODAL (EDIT PROFILE, AVATAR, NAME, BIO) ===== -->
+  <div class="modal-backdrop" id="profile-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+    <div class="modal-card profile-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="profile-modal-title">👤 Edit Profile</h3>
+          <p class="profile-modal-subtitle">Customize your name, profile photo, and personal bio</p>
+        </div>
+        <button class="modal-close" id="profile-modal-close" aria-label="Close modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="profile-alert" id="profile-alert" style="display:none;" role="alert"></div>
+
+        <!-- Avatar Uploader & Presets Section -->
+        <div class="profile-avatar-section">
+          <div class="profile-pfp-preview-wrap">
+            <div class="profile-pfp-preview" id="profile-pfp-preview">
+              <span id="profile-pfp-initial">H</span>
+            </div>
+            <div class="profile-pfp-actions">
+              <label class="btn-upload-pfp" for="pfp-file-input">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload Photo
+              </label>
+              <input type="file" id="pfp-file-input" accept="image/*" style="display:none;" />
+              <button type="button" class="btn-remove-pfp" id="btn-remove-pfp" title="Remove custom photo">Remove</button>
             </div>
           </div>
 
-          <button type="submit" class="btn-auth-submit" id="btn-auth-submit">
-            <span id="auth-submit-text">Log In</span>
-          </button>
+          <!-- Quick Avatar Presets -->
+          <div class="avatar-presets-wrap">
+            <span class="avatar-presets-label">Or choose an avatar:</span>
+            <div class="avatar-presets-grid" id="avatar-presets-grid">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Profile Form -->
+        <form id="profile-form" class="profile-form" onsubmit="return false;">
+          <div class="auth-field">
+            <label for="profile-input-name">Display Name</label>
+            <input type="text" id="profile-input-name" placeholder="Your Name" required />
+          </div>
+
+          <div class="auth-field">
+            <label for="profile-input-email">Email Address</label>
+            <input type="email" id="profile-input-email" disabled class="input-disabled" />
+          </div>
+
+          <div class="auth-field">
+            <label for="profile-input-bio">Bio / Role Tagline</label>
+            <input type="text" id="profile-input-bio" placeholder="e.g. AI Builder & Designer" />
+          </div>
+
+          <!-- Password Change Section (Optional Collapsible) -->
+          <div class="profile-security-section">
+            <div class="profile-section-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>Security & Password (Optional)</span>
+            </div>
+            <div class="profile-pwd-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">
+              <div class="auth-field">
+                <label for="profile-current-pwd">Current Password</label>
+                <input type="password" id="profile-current-pwd" placeholder="••••••••" />
+              </div>
+              <div class="auth-field">
+                <label for="profile-new-pwd">New Password</label>
+                <input type="password" id="profile-new-pwd" placeholder="New password" />
+              </div>
+            </div>
+          </div>
         </form>
       </div>
 
-      <div class="auth-modal-footer">
-        <span id="auth-toggle-prompt">Don't have an account?</span>
-        <button type="button" class="btn-link" id="btn-auth-toggle-mode">Create an account</button>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btn-cancel-profile">Cancel</button>
+        <button type="button" class="btn-primary" id="btn-save-profile">Save Changes</button>
       </div>
     </div>
   </div>
