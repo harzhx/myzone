@@ -1943,6 +1943,175 @@ async function handleGoogleOAuthEndpoint(req, res) {
   }
 }
 
+const googleOAuthStates = new Map();
+
+// Google OAuth 2.0 Start
+async function handleGoogleOAuthStart(req, res) {
+  const state = crypto.randomBytes(16).toString('hex');
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const callbackUrl = `http://localhost:${PORT}/api/auth/oauth/google/callback`;
+
+  googleOAuthStates.set(state, { createdAt: Date.now() });
+
+  if (clientId) {
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(callbackUrl)}&response_type=code&scope=openid%20email%20profile&state=${state}&access_type=offline&prompt=select_account`;
+    res.writeHead(302, { 'Location': authUrl });
+    res.end();
+  } else {
+    // Interactive Quick Sign-In view with Google design
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Sign in with Google</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #202124; color: #e8eaed; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+          .card { background: #303134; border: 1px solid #5f6368; border-radius: 16px; padding: 36px 32px; width: 100%; max-width: 380px; text-align: center; box-shadow: 0 12px 24px rgba(0,0,0,0.5); }
+          h2 { margin: 16px 0 6px; font-size: 20px; font-weight: 500; }
+          p { color: #9aa0a6; font-size: 14px; margin-bottom: 24px; }
+          input { width: 100%; box-sizing: border-box; padding: 12px 16px; border-radius: 8px; border: 1px solid #5f6368; background: #202124; color: #fff; font-size: 15px; margin-bottom: 16px; outline: none; }
+          input:focus { border-color: #8ab4f8; }
+          button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #8ab4f8; color: #202124; font-weight: 600; font-size: 15px; cursor: pointer; transition: background 0.15s; }
+          button:hover { background: #aecbfa; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <svg width="36" height="36" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.35 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+          </svg>
+          <h2>Sign in with Google</h2>
+          <p>Choose your Google Account for My Zone</p>
+          <form id="g-form">
+            <input type="email" id="g-email" placeholder="username@gmail.com" required autofocus value="harzhx@gmail.com" />
+            <button type="submit">Continue with Google</button>
+          </form>
+          <script>
+            document.getElementById('g-form').onsubmit = async (e) => {
+              e.preventDefault();
+              const email = document.getElementById('g-email').value.trim();
+              if (!email) return;
+              const res = await fetch('/api/auth/oauth/google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email,
+                  name: email.split('@')[0],
+                  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+                  google_id: 'gid_' + Date.now()
+                })
+              });
+              const data = await res.json();
+              if (data.success && data.token) {
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'OAUTH_SUCCESS', token: data.token, user: data.user }, '*');
+                  window.close();
+                } else {
+                  window.location.href = '/';
+                }
+              }
+            };
+          </script>
+        </div>
+      </body>
+      </html>
+    `;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+  }
+}
+
+// Google OAuth 2.0 Callback
+async function handleGoogleOAuthCallback(req, res) {
+  const url = new URL(req.url, `http://${req.headers?.host || `localhost:${PORT}`}`);
+  const code = url.searchParams.get('code');
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const callbackUrl = `http://localhost:${PORT}/api/auth/oauth/google/callback`;
+
+  if (code && clientId && clientSecret) {
+    try {
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: callbackUrl,
+          grant_type: 'authorization_code'
+        })
+      });
+      const tokenData = await tokenRes.json();
+      if (tokenData.access_token) {
+        const uRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+        });
+        const gUser = await uRes.json();
+        if (gUser && gUser.email) {
+          const email = gUser.email.toLowerCase();
+          let user = await findUserByEmail(email);
+          const isAdmin = isEmailAdmin(email);
+          const role = isAdmin ? 'admin' : 'user';
+
+          if (user) {
+            user.google_id = gUser.sub;
+            if (gUser.picture && !user.avatar) user.avatar = gUser.picture;
+            await saveUserRecord(user);
+          } else {
+            user = {
+              id: 'usr_' + Date.now(),
+              email,
+              name: gUser.name || email.split('@')[0],
+              avatar: gUser.picture || null,
+              google_id: gUser.sub,
+              role,
+              is_admin: isAdmin,
+              created_at: new Date().toISOString()
+            };
+            await saveUserRecord(user);
+          }
+
+          const jwtToken = signJwt({
+            userId: user.id,
+            email: user.email,
+            name: user.name,
+            avatar: user.avatar,
+            role,
+            isAdmin
+          });
+
+          const html = `
+            <html><body><script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_SUCCESS', token: '${jwtToken}', user: ${JSON.stringify(user)} }, '*');
+                window.close();
+              } else {
+                window.location.href = '/';
+              }
+            </script></body></html>
+          `;
+          res.writeHead(200, {
+            'Content-Type': 'text/html',
+            'Set-Cookie': `myzone_auth_token=${jwtToken}; Path=/; SameSite=Lax; Max-Age=${86400 * 30}`
+          });
+          res.end(html);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('[Google OAuth Callback Error]:', e);
+    }
+  }
+
+  res.writeHead(302, { 'Location': '/?oauth=error' });
+  res.end();
+}
+
 // Unified Twitter / X OAuth Login
 async function handleTwitterOAuthEndpoint(req, res) {
   try {
@@ -2373,6 +2542,14 @@ export async function handleRequest(req, res) {
 
   if (pathname === '/api/auth/verify-2fa' && req.method === 'POST') {
     return handleVerify2faEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/oauth/google/start' && req.method === 'GET') {
+    return handleGoogleOAuthStart(req, res);
+  }
+
+  if (pathname === '/api/auth/oauth/google/callback' && req.method === 'GET') {
+    return handleGoogleOAuthCallback(req, res);
   }
 
   if (pathname === '/api/auth/oauth/google' && req.method === 'POST') {

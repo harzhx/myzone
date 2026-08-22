@@ -2910,35 +2910,29 @@ function stopVoiceRecognition() {
 }
 
 function initWebhookModal() {
-  if (btnOpenWebhookCfg && webhookModal) {
+  const modalEl = document.getElementById('integration-modal');
+  const closeBtn = document.getElementById('modal-close');
+  const doneBtn = document.getElementById('modal-done-btn');
+  const webhookInput = document.getElementById('webhook-url-input');
+
+  if (btnOpenWebhookCfg && modalEl) {
     btnOpenWebhookCfg.addEventListener('click', () => {
-      if (webhookUrlInput) {
-        webhookUrlInput.value = state.aiBot.webhookUrl || '';
+      if (webhookInput) {
+        webhookInput.value = state.aiBot.webhookUrl || '';
       }
-      webhookModal.style.display = 'flex';
+      modalEl.style.display = 'flex';
     });
   }
 
-  if (webhookModalClose) {
-    webhookModalClose.addEventListener('click', () => { webhookModal.style.display = 'none'; });
+  if (closeBtn && modalEl) {
+    closeBtn.addEventListener('click', () => { modalEl.style.display = 'none'; });
   }
-  if (btnCancelWebhook) {
-    btnCancelWebhook.addEventListener('click', () => { webhookModal.style.display = 'none'; });
+  if (doneBtn && modalEl) {
+    doneBtn.addEventListener('click', () => { modalEl.style.display = 'none'; });
   }
-  if (webhookModal) {
-    webhookModal.addEventListener('click', (e) => {
-      if (e.target === webhookModal) webhookModal.style.display = 'none';
-    });
-  }
-
-  if (btnSaveWebhook) {
-    btnSaveWebhook.addEventListener('click', () => {
-      const url = webhookUrlInput.value.trim();
-      state.aiBot.webhookUrl = url;
-      saveToStorage();
-      webhookModal.style.display = 'none';
-      showToast('⚡ Webhook URL saved!', 'saved-toast');
-      addAiMessage('bot', `Make.com / Buffer webhook configured to: \`${url || 'Default'}\``);
+  if (modalEl) {
+    modalEl.addEventListener('click', (e) => {
+      if (e.target === modalEl) modalEl.style.display = 'none';
     });
   }
 }
@@ -3297,82 +3291,20 @@ function initAuthSystem() {
     }
   });
 
-  // Social Login: Google OAuth (Google Identity Services / Popup)
+  // Social Login: Google OAuth (Popup & Live Google OAuth 2.0 Flow)
   if (btnOAuthGoogle) {
-    btnOAuthGoogle.addEventListener('click', async () => {
-      try {
-        btnOAuthGoogle.disabled = true;
-
-        // Fetch auth config
-        let googleClientId = '';
-        try {
-          const cfgRes = await fetch('/api/auth/config');
-          const cfg = await cfgRes.json();
-          googleClientId = cfg.googleClientId;
-        } catch (e) {}
-
-        if (googleClientId && window.google?.accounts?.id) {
-          google.accounts.id.initialize({
-            client_id: googleClientId,
-            callback: async (response) => {
-              if (response?.credential) {
-                const res = await fetch(API_AUTH_OAUTH_GOOGLE, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ credential: response.credential })
-                });
-                const data = await res.json();
-                if (data.success && data.token) {
-                  localStorage.setItem(LS_AUTH_TOKEN, data.token);
-                  state.auth.token = data.token;
-                  state.auth.user = data.user;
-                  state.auth.isAuthenticated = true;
-                  state.auth.isAdmin = Boolean(data.user.isAdmin);
-                  closeAuthModal();
-                  renderAuthUI();
-                  showToast(`Signed in with Google as ${data.user.name || data.user.email}!`, 'saved-toast');
-                  loadAllData();
-                } else {
-                  showAuthAlert(data.error || 'Google sign-in verification failed.');
-                }
-              }
-            }
-          });
-          google.accounts.id.prompt();
-        } else {
-          // Interactive Google Account Sign-In
-          const email = prompt('Enter your Google Account email to sign in:', state.auth.user?.email || 'harzhx@gmail.com');
-          if (!email || !email.trim()) return;
-
-          const res = await fetch(API_AUTH_OAUTH_GOOGLE, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: email.trim(),
-              name: email.split('@')[0],
-              avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-              google_id: 'google_' + Date.now()
-            })
-          });
-          const data = await res.json();
-          if (data.success && data.token) {
-            localStorage.setItem(LS_AUTH_TOKEN, data.token);
-            state.auth.token = data.token;
-            state.auth.user = data.user;
-            state.auth.isAuthenticated = true;
-            state.auth.isAdmin = Boolean(data.user.isAdmin);
-            closeAuthModal();
-            renderAuthUI();
-            showToast(`Signed in with Google as ${data.user.name || data.user.email}!`, 'saved-toast');
-            loadAllData();
-          } else {
-            showAuthAlert(data.error || 'Google sign-in failed.');
-          }
-        }
-      } catch (e) {
-        showAuthAlert(e.message);
-      } finally {
-        btnOAuthGoogle.disabled = false;
+    btnOAuthGoogle.addEventListener('click', () => {
+      const width = 500;
+      const height = 620;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      const popup = window.open(
+        '/api/auth/oauth/google/start',
+        'GoogleOAuth',
+        `width=${width},height=${height},left=${left},top=${top},status=0,toolbar=0,location=0,menubar=0`
+      );
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        window.location.href = '/api/auth/oauth/google/start';
       }
     });
   }
