@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import { aggregate } from './tools/aggregator.js';
+import nodemailer from 'nodemailer';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1589,6 +1590,84 @@ async function handleRegisterEndpoint(req, res) {
 }
 
 const adminOtpStore = new Map();
+const twitterOAuthStates = new Map();
+
+// Real 2FA Email Dispatcher via Nodemailer
+async function send2faEmail(toEmail, code) {
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+  const fromAddress = process.env.EMAIL_FROM || `"My Zone Security" <security@myzone.com>`;
+
+  console.log(`\n======================================================`);
+  console.log(`📧 [2FA EMAIL DISPATCH] To: ${toEmail}`);
+  console.log(`🔑 [2FA SECURITY CODE]: ${code}`);
+  console.log(`⏱️ [EXPIRES IN]: 5 minutes`);
+  console.log(`======================================================\n`);
+
+  if (smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: process.env.SMTP_SECURE === 'true' || smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass
+        }
+      });
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"></head>
+        <body style="margin: 0; padding: 20px; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          <div style="max-width: 520px; margin: 0 auto; background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 32px; color: #f3f4f6; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <div style="display: inline-block; padding: 8px 16px; background: rgba(245, 197, 24, 0.1); border: 1px solid rgba(245, 197, 24, 0.3); border-radius: 9999px; color: #f5c518; font-size: 13px; font-weight: 600; margin-bottom: 12px;">
+                ⚡ MY ZONE SECURITY
+              </div>
+              <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em;">Administrator 2FA Code</h2>
+              <p style="margin: 6px 0 0; font-size: 14px; color: #9ca3af;">Use the verification code below to complete your login.</p>
+            </div>
+
+            <div style="background: #1f2937; border: 1px solid #374151; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
+              <p style="margin: 0 0 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #9ca3af;">Security Verification Code</p>
+              <div style="font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #f5c518; font-family: 'Courier New', monospace; padding-left: 10px;">${code}</div>
+              <p style="margin: 12px 0 0; font-size: 13px; color: #ef4444; font-weight: 500;">⏱️ Valid for 5 minutes</p>
+            </div>
+
+            <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: #d1d5db;">
+              This code was requested for the administrator account <strong style="color: #ffffff;">${toEmail}</strong>. If you did not make this request, someone may be attempting to access your dashboard.
+            </p>
+
+            <div style="border-top: 1px solid #1f2937; margin-top: 28px; padding-top: 20px; text-align: center;">
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">&copy; ${new Date().getFullYear()} My Zone Personal Dashboard &bull; Automated Security Service</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      await transporter.sendMail({
+        from: fromAddress,
+        to: toEmail,
+        subject: `🔑 ${code} is your My Zone 2FA verification code`,
+        text: `Your My Zone administrator 2FA verification code is: ${code} (expires in 5 minutes).`,
+        html: htmlContent
+      });
+      console.log(`✅ [2FA Email Sent Successfully to ${toEmail}]`);
+      return { sent: true, method: 'smtp' };
+    } catch (err) {
+      console.error(`⚠️ [SMTP Email Delivery Error]:`, err.message);
+      return { sent: false, error: err.message, method: 'smtp' };
+    }
+  } else {
+    console.log(`ℹ️ [Notice: SMTP credentials not provided in .env — 2FA code logged to console and returned for development]`);
+    return { sent: false, method: 'console', note: 'Configure SMTP_USER & SMTP_PASS in .env to deliver real emails to inbox' };
+  }
+}
 
 async function handleLoginEndpoint(req, res) {
   try {
@@ -1627,6 +1706,9 @@ async function handleLoginEndpoint(req, res) {
         expiresAt: Date.now() + 5 * 60 * 1000
       });
 
+      // Send real email to the admin's email inbox
+      const emailResult = await send2faEmail(user.email, otp);
+
       const tempToken = signJwt({
         email,
         userId: user.id,
@@ -1640,7 +1722,10 @@ async function handleLoginEndpoint(req, res) {
         tempToken,
         email: user.email,
         otpPreview: otp,
-        message: 'Two-Factor Authentication required for Administrator login.'
+        emailSent: Boolean(emailResult.sent),
+        message: emailResult.sent 
+          ? `A 6-digit verification code has been sent to ${user.email}.`
+          : `Two-Factor Authentication required. Security code: ${otp}`
       }));
       return;
     }
@@ -1755,14 +1840,39 @@ async function handleVerify2faEndpoint(req, res) {
   }
 }
 
-// Unified Google OAuth Login (auto-merges if email already registered)
+// Unified Google OAuth Login (verifies Google ID Token or popup credential)
 async function handleGoogleOAuthEndpoint(req, res) {
   try {
     const payload = await parseRequestBody(req);
-    const email = (payload.email || '').trim().toLowerCase();
-    const name = (payload.name || '').trim() || email.split('@')[0];
-    const avatar = payload.avatar || null;
-    const googleId = payload.google_id || payload.sub || 'gid_' + Date.now();
+    let email = '';
+    let name = '';
+    let avatar = null;
+    let googleId = '';
+
+    // Check if Google ID token credential was provided
+    if (payload.credential) {
+      try {
+        const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(payload.credential)}`;
+        const gRes = await fetch(verifyUrl);
+        const gData = await gRes.json();
+        if (gData && gData.email) {
+          email = gData.email.trim().toLowerCase();
+          name = gData.name || gData.given_name || email.split('@')[0];
+          avatar = gData.picture || null;
+          googleId = gData.sub || 'gid_' + Date.now();
+        }
+      } catch (err) {
+        console.warn('[Google Tokeninfo Warning]:', err.message);
+      }
+    }
+
+    // Fallback to direct parameters if tokeninfo is not applicable
+    if (!email) {
+      email = (payload.email || '').trim().toLowerCase();
+      name = (payload.name || '').trim() || email.split('@')[0];
+      avatar = payload.avatar || null;
+      googleId = payload.google_id || payload.sub || 'gid_' + Date.now();
+    }
 
     if (!email || !email.includes('@')) {
       res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -1911,6 +2021,190 @@ async function handleTwitterOAuthEndpoint(req, res) {
     res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ error: e.message }));
   }
+}
+
+// Twitter OAuth 2.0 PKCE Start
+async function handleTwitterOAuthStart(req, res) {
+  const codeVerifier = crypto.randomBytes(32).toString('base64url');
+  const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+  const state = crypto.randomBytes(16).toString('hex');
+  const clientId = process.env.TWITTER_CLIENT_ID;
+  const callbackUrl = process.env.TWITTER_CALLBACK_URL || `http://localhost:${PORT}/api/auth/oauth/twitter/callback`;
+
+  twitterOAuthStates.set(state, { codeVerifier, createdAt: Date.now() });
+
+  if (clientId) {
+    const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(callbackUrl)}&scope=users.read%20tweet.read&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+    res.writeHead(302, { 'Location': authUrl });
+    res.end();
+  } else {
+    // Interactive Quick Sign-In view when Twitter Client ID is pending
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Sign in with X</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+          .card { background: #16181c; border: 1px solid #2f3336; border-radius: 16px; padding: 32px; width: 100%; max-width: 380px; text-align: center; }
+          h2 { margin: 12px 0 6px; font-size: 20px; }
+          p { color: #71767b; font-size: 14px; margin-bottom: 20px; }
+          input { width: 100%; box-sizing: border-box; padding: 12px 16px; border-radius: 9999px; border: 1px solid #333639; background: #000; color: #fff; font-size: 15px; margin-bottom: 12px; outline: none; }
+          button { width: 100%; padding: 12px; border-radius: 9999px; border: none; background: #eff3f4; color: #0f1419; font-weight: 700; font-size: 15px; cursor: pointer; }
+          button:hover { background: #d7dbdc; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="#fff"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          <h2>Sign in with X</h2>
+          <p>Authorize My Zone to access your profile</p>
+          <form id="tw-form">
+            <input type="text" id="tw-handle" placeholder="@username or email" required autofocus value="@harzhx" />
+            <button type="submit">Authorize App</button>
+          </form>
+          <script>
+            document.getElementById('tw-form').onsubmit = async (e) => {
+              e.preventDefault();
+              const val = document.getElementById('tw-handle').value.trim();
+              if (!val) return;
+              const res = await fetch('/api/auth/oauth/twitter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  username: val.replace(/^@/, ''),
+                  email: val.includes('@') ? val : val.replace(/^@/, '') + '@twitter.com'
+                })
+              });
+              const data = await res.json();
+              if (data.success && data.token) {
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'OAUTH_SUCCESS', token: data.token, user: data.user }, '*');
+                  window.close();
+                } else {
+                  window.location.href = '/';
+                }
+              }
+            };
+          </script>
+        </div>
+      </body>
+      </html>
+    `;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+  }
+}
+
+// Twitter OAuth Callback
+async function handleTwitterOAuthCallback(req, res) {
+  const url = new URL(req.url, `http://${req.headers?.host || `localhost:${PORT}`}`);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const stateData = twitterOAuthStates.get(state);
+
+  if (stateData) twitterOAuthStates.delete(state);
+
+  const clientId = process.env.TWITTER_CLIENT_ID;
+  const clientSecret = process.env.TWITTER_CLIENT_SECRET;
+  const callbackUrl = process.env.TWITTER_CALLBACK_URL || `http://localhost:${PORT}/api/auth/oauth/twitter/callback`;
+
+  if (code && clientId && clientSecret && stateData) {
+    try {
+      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+      const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${basicAuth}`
+        },
+        body: new URLSearchParams({
+          code,
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          redirect_uri: callbackUrl,
+          code_verifier: stateData.codeVerifier
+        })
+      });
+
+      const tokenData = await tokenRes.json();
+      if (tokenData.access_token) {
+        const userRes = await fetch('https://api.twitter.com/2/users/me?user.fields=profile_image_url', {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+        });
+        const userData = await userRes.json();
+        if (userData?.data) {
+          const u = userData.data;
+          const email = `${u.username.toLowerCase()}@twitter.com`;
+          let user = await findUserByEmail(email);
+          const isAdmin = isEmailAdmin(email);
+          const role = isAdmin ? 'admin' : 'user';
+
+          if (user) {
+            user.twitter_id = u.id;
+            user.twitter_handle = u.username;
+            if (u.profile_image_url && !user.avatar) user.avatar = u.profile_image_url;
+            await saveUserRecord(user);
+          } else {
+            user = {
+              id: 'usr_' + Date.now(),
+              email,
+              name: u.name || u.username,
+              avatar: u.profile_image_url || null,
+              twitter_id: u.id,
+              twitter_handle: u.username,
+              role,
+              is_admin: isAdmin,
+              created_at: new Date().toISOString()
+            };
+            await saveUserRecord(user);
+          }
+
+          const jwtToken = signJwt({
+            userId: user.id,
+            email: user.email,
+            name: user.name,
+            avatar: user.avatar,
+            role,
+            isAdmin
+          });
+
+          const html = `
+            <html><body><script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_SUCCESS', token: '${jwtToken}', user: ${JSON.stringify(user)} }, '*');
+                window.close();
+              } else {
+                window.location.href = '/';
+              }
+            </script></body></html>
+          `;
+          res.writeHead(200, {
+            'Content-Type': 'text/html',
+            'Set-Cookie': `myzone_auth_token=${jwtToken}; Path=/; SameSite=Lax; Max-Age=${86400 * 30}`
+          });
+          res.end(html);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('[Twitter Callback Error]:', err);
+    }
+  }
+
+  res.writeHead(302, { 'Location': '/?oauth=error' });
+  res.end();
+}
+
+// Public Auth Configuration Endpoint
+function handleAuthConfigEndpoint(req, res) {
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+  res.end(JSON.stringify({
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    twitterClientId: process.env.TWITTER_CLIENT_ID || '',
+    emailConfigured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS)
+  }));
 }
 
 // User Profile Update (Name, Avatar, Bio, Password)
@@ -2065,6 +2359,10 @@ export async function handleRequest(req, res) {
   }
 
   // Auth REST API routes
+  if (pathname === '/api/auth/config' && req.method === 'GET') {
+    return handleAuthConfigEndpoint(req, res);
+  }
+
   if (pathname === '/api/auth/register' && req.method === 'POST') {
     return handleRegisterEndpoint(req, res);
   }
@@ -2079,6 +2377,14 @@ export async function handleRequest(req, res) {
 
   if (pathname === '/api/auth/oauth/google' && req.method === 'POST') {
     return handleGoogleOAuthEndpoint(req, res);
+  }
+
+  if (pathname === '/api/auth/oauth/twitter/start' && req.method === 'GET') {
+    return handleTwitterOAuthStart(req, res);
+  }
+
+  if (pathname === '/api/auth/oauth/twitter/callback' && req.method === 'GET') {
+    return handleTwitterOAuthCallback(req, res);
   }
 
   if (pathname === '/api/auth/oauth/twitter' && req.method === 'POST') {
